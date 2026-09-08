@@ -15,8 +15,8 @@ public final class FilenameParser {
     private static final Pattern FILE_PATTERN = Pattern.compile("^(\\d{8}_\\d{6})(.*)\\.png$", Pattern.CASE_INSENSITIVE);
     private static final Pattern LEVEL_PATTERN = Pattern.compile("^LEVEL(\\d+)(?:\\s+(.*))?$", Pattern.CASE_INSENSITIVE);
     private static final String[] CLEAR_TYPES = {
-            "ASSIST EASY CLEAR", "LIGHT ASSIST EASY CLEAR", "EASY CLEAR", "HARD CLEAR",
-            "EXHARD CLEAR", "FULL COMBO", "NO PLAY", "FAILED", "CLEAR", "PERFECT", "MAX"
+            "LIGHT ASSIST EASY CLEAR", "ASSIST EASY CLEAR", "EASY CLEAR",
+            "EXHARD CLEAR", "HARD CLEAR", "FULL COMBO", "NO PLAY", "FAILED", "CLEAR", "PERFECT", "MAX"
     };
     private static final String[] RANKS = {"AAA", "AA", "A", "B", "C", "D", "E", "F"};
 
@@ -58,10 +58,13 @@ public final class FilenameParser {
         }
     }
 
+    private static final Pattern LR2ORAJA_PREFIX = Pattern.compile("^_LR2oraja", Pattern.CASE_INSENSITIVE);
+
     private static ParsedMetadata parseSuffix(String suffix) {
         if (suffix.isBlank()) {
             return ParsedMetadata.empty();
         }
+        suffix = LR2ORAJA_PREFIX.matcher(suffix).replaceFirst("");
         if (suffix.startsWith("_Music_Select")) {
             return new ParsedMetadata("Music Select", "", "", "", "", "");
         }
