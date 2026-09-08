@@ -21,12 +21,13 @@ $inputDir = Join-Path $ProjectRoot "build\release-input"
 if (Test-Path $distDir) {
     Remove-Item $distDir -Recurse -Force
 }
-New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
 
 Copy-Item $shadowJar.FullName (Join-Path $inputDir $shadowJar.Name)
 
 Write-Host "==> Creating app-image with jpackage"
+# jpackage refuses to write into a destination that already exists, so it must
+# own creation of $distDir itself - do not pre-create it (or any subfolder).
 jpackage `
     --type app-image `
     --name beatoraja-screenshot-manager `
@@ -35,11 +36,15 @@ jpackage `
     --main-class com.beatoraja.screenshot.Main `
     --dest (Join-Path $ProjectRoot "dist") `
     --java-options "-Dapp.dir=`$APP_DIR"
+if ($LASTEXITCODE -ne 0) {
+    throw "jpackage failed with exit code $LASTEXITCODE"
+}
 
 $appImageDir = Join-Path $ProjectRoot "dist\beatoraja-screenshot-manager"
 if (-not (Test-Path $appImageDir)) {
     throw "jpackage output not found: $appImageDir"
 }
+New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 
 Write-Host "==> Building bundled twitter.exe (optional, requires Python + twitter-cli)"
 $buildTwitterScript = Join-Path $ProjectRoot "scripts\build-twitter-cli.ps1"
