@@ -4,22 +4,47 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SongDatabaseService implements AutoCloseable {
 
-    private final Connection connection;
     private final boolean available;
+    private final Map<String, SongRecord> bySha256 = new HashMap<>();
 
     public SongDatabaseService(Path songDatabase) throws SQLException {
         if (songDatabase == null || !Files.exists(songDatabase)) {
-            connection = null;
             available = false;
             return;
         }
-        connection = DriverManager.getConnection("jdbc:sqlite:" + songDatabase.toAbsolutePath());
+
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + songDatabase.toAbsolutePath());
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("""
+                     SELECT md5, sha256, title, subtitle, level
+                     FROM song
+                     """)) {
+            while (rs.next()) {
+                String sha256 = rs.getString("sha256");
+                if (sha256 == null || sha256.isBlank() || bySha256.containsKey(sha256)) {
+                    continue;
+                }
+                String title = rs.getString("title");
+                String subtitle = rs.getString("subtitle");
+                String fullTitle = subtitle == null || subtitle.isBlank()
+                        ? nullToEmpty(title)
+                        : nullToEmpty(title) + " " + subtitle.trim();
+                bySha256.put(sha256, new SongRecord(
+                        nullToEmpty(rs.getString("md5")),
+                        sha256,
+                        fullTitle,
+                        rs.getInt("level")
+                ));
+            }
+        }
         available = true;
     }
 
@@ -27,35 +52,11 @@ public class SongDatabaseService implements AutoCloseable {
         return available;
     }
 
-    public SongRecord findBySha256(String sha256) throws SQLException {
+    public SongRecord findBySha256(String sha256) {
         if (!available || sha256 == null || sha256.isBlank()) {
             return null;
         }
-
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT md5, sha256, title, subtitle, level
-                FROM song
-                WHERE sha256 = ?
-                LIMIT 1
-                """)) {
-            statement.setString(1, sha256);
-            try (ResultSet rs = statement.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
-                }
-                String title = rs.getString("title");
-                String subtitle = rs.getString("subtitle");
-                String fullTitle = subtitle == null || subtitle.isBlank()
-                        ? nullToEmpty(title)
-                        : nullToEmpty(title) + " " + subtitle.trim();
-                return new SongRecord(
-                        nullToEmpty(rs.getString("md5")),
-                        nullToEmpty(rs.getString("sha256")),
-                        fullTitle,
-                        rs.getInt("level")
-                );
-            }
-        }
+        return bySha256.get(sha256);
     }
 
     private String nullToEmpty(String value) {
@@ -63,10 +64,8 @@ public class SongDatabaseService implements AutoCloseable {
     }
 
     @Override
-    public void close() throws SQLException {
-        if (connection != null) {
-            connection.close();
-        }
+    public void close() {
+        bySha256.clear();
     }
 
     public record SongRecord(String md5, String sha256, String fullTitle, int level) {

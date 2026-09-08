@@ -44,6 +44,8 @@ public class ScreenshotListPanel extends JPanel {
         list.setModel(listModel);
         list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setCellRenderer(new ScreenshotCellRenderer());
+        list.setFixedCellWidth(280);
+        list.setFixedCellHeight(72);
         list.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && selectionListener != null) {
                 selectionListener.onSelectionChanged(getSelectedEntries());
