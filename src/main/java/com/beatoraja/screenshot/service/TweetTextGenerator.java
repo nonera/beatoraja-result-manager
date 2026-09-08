@@ -3,6 +3,7 @@ package com.beatoraja.screenshot.service;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class TweetTextGenerator {
@@ -15,7 +16,13 @@ public final class TweetTextGenerator {
     }
 
     public static String generate(ScreenshotEntry entry, String postNotation) {
-        return generate(List.of(entry), postNotation);
+        return buildResult(
+                postNotation,
+                entry.getTitle(),
+                entry.getClearType(),
+                entry.getRank(),
+                entry.getFileName()
+        );
     }
 
     public static String generate(ScreenshotRecord record) {
@@ -25,18 +32,20 @@ public final class TweetTextGenerator {
         return buildResult(record.postNotation(), record.title(), record.clearType(), record.rank(), record.fileName());
     }
 
-    public static String generate(List<ScreenshotEntry> entries, String postNotation) {
+    /**
+     * Builds one line per entry (in order), joined with newlines, so every selected
+     * screenshot's info is included instead of only the first one.
+     */
+    public static String generate(List<ScreenshotEntry> entries, List<String> postNotations) {
         if (entries == null || entries.isEmpty()) {
             return "";
         }
-        ScreenshotEntry entry = entries.get(0);
-        return buildResult(
-                postNotation,
-                entry.getTitle(),
-                entry.getClearType(),
-                entry.getRank(),
-                entry.getFileName()
-        );
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i++) {
+            String notation = postNotations != null && i < postNotations.size() ? postNotations.get(i) : "";
+            lines.add(generate(entries.get(i), notation));
+        }
+        return String.join("\n", lines);
     }
 
     private static String buildResult(String postNotation, String title, String clearType, String rank, String fallback) {

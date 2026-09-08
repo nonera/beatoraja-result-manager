@@ -23,15 +23,19 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -47,9 +51,12 @@ public class MainFrame extends JFrame {
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
     private final JLabel statusLabel = new JLabel("準備中...");
+    private final JProgressBar indexProgressBar = new JProgressBar();
     private final JComboBox<AppConfig.DiscordWebhookEntry> discordWebhookCombo = new JComboBox<>();
     private final JButton twitterButton = new JButton("Twitter に投稿");
     private final JButton discordButton = new JButton("Discord に送信");
+    private JMenuItem refreshMenuItem;
+    private SwingWorker<List<TableLookupService.EnrichedScreenshot>, Integer> indexingWorker;
 
     public MainFrame(AppConfig config) {
         super("beatoraja Screenshot Manager");
@@ -84,9 +91,9 @@ public class MainFrame extends JFrame {
     private void buildUi() {
         JMenuBar menuBar = new JMenuBar();
         JMenu fileMenu = new JMenu("ファイル");
-        JMenuItem refreshItem = new JMenuItem("再読み込み");
-        refreshItem.addActionListener(e -> refreshScreenshots());
-        fileMenu.add(refreshItem);
+        refreshMenuItem = new JMenuItem("再読み込み");
+        refreshMenuItem.addActionListener(e -> refreshScreenshots());
+        fileMenu.add(refreshMenuItem);
         menuBar.add(fileMenu);
 
         JMenu settingsMenu = new JMenu("設定");
@@ -121,7 +128,16 @@ public class MainFrame extends JFrame {
         tabbedPane.addTab("ギャラリー", galleryPanel);
         tabbedPane.addTab("データベース", databasePanel);
         add(tabbedPane, BorderLayout.CENTER);
-        add(statusLabel, BorderLayout.SOUTH);
+
+        indexProgressBar.setStringPainted(true);
+        indexProgressBar.setPreferredSize(new Dimension(220, indexProgressBar.getPreferredSize().height));
+        indexProgressBar.setVisible(false);
+
+        JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
+        statusPanel.setBorder(new EmptyBorder(2, 8, 2, 8));
+        statusPanel.add(statusLabel, BorderLayout.CENTER);
+        statusPanel.add(indexProgressBar, BorderLayout.EAST);
+        add(statusPanel, BorderLayout.SOUTH);
 
         updateActionButtons(0);
     }
@@ -145,8 +161,8 @@ public class MainFrame extends JFrame {
     }
 
     private void onSelectionChanged(List<ScreenshotEntry> selectedEntries) {
-        String postNotation = resolvePostNotation(selectedEntries);
-        String message = TweetTextGenerator.generate(selectedEntries, postNotation);
+        List<String> postNotations = resolvePostNotations(selectedEntries);
+        String message = TweetTextGenerator.generate(selectedEntries, postNotations);
         previewPanel.showEntries(selectedEntries, message);
         updateActionButtons(selectedEntries.size());
         statusLabel.setText(selectedEntries.isEmpty()
@@ -158,16 +174,29 @@ public class MainFrame extends JFrame {
         onSelectionChanged(listPanel.getSelectedEntries());
     }
 
-    private String resolvePostNotation(List<ScreenshotEntry> selectedEntries) {
-        if (selectedEntries == null || selectedEntries.isEmpty() || screenshotDatabase == null) {
+    private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
+        List<String> notations = new ArrayList<>();
+        if (selectedEntries == null) {
+            return notations;
+        }
+        for (ScreenshotEntry entry : selectedEntries) {
+            notations.add(resolvePostNotation(entry));
+        }
+        return notations;
+    }
+
+    private String resolvePostNotation(ScreenshotEntry entry) {
+        if (entry == null) {
             return "";
         }
         try {
-            ScreenshotRecord record = screenshotDatabase.findByFilePath(selectedEntries.get(0).getFilePath());
-            if (record != null && !record.postNotation().isBlank()) {
-                return record.postNotation();
+            if (screenshotDatabase != null) {
+                ScreenshotRecord record = screenshotDatabase.findByFilePath(entry.getFilePath());
+                if (record != null && !record.postNotation().isBlank()) {
+                    return record.postNotation();
+                }
             }
-            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(selectedEntries.get(0));
+            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
             return enriched.defaultPostNotation();
         } catch (Exception e) {
             return "";
@@ -188,27 +217,70 @@ public class MainFrame extends JFrame {
             reloadTableRegistry();
             List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir);
             listPanel.setEntries(entries);
-            syncDatabase(entries);
-            statusLabel.setText(entries.size() + " 件のスクショ");
+            statusLabel.setText(entries.size() + " 件のスクショを読み込みました");
+            startIndexing(entries);
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, "スクショフォルダの読み込みに失敗しました: " + e.getMessage(),
                     "エラー", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void syncDatabase(List<ScreenshotEntry> entries) {
+    private void startIndexing(List<ScreenshotEntry> entries) {
         if (screenshotDatabase == null) {
             return;
         }
-        try {
-            List<TableLookupService.EnrichedScreenshot> enriched = entries.stream()
-                    .map(chartResolverService::enrich)
-                    .toList();
-            screenshotDatabase.syncAll(enriched);
-            databasePanel.reload(screenshotDatabase);
-        } catch (SQLException e) {
-            statusLabel.setText("DB 同期失敗: " + e.getMessage());
+        if (indexingWorker != null && !indexingWorker.isDone()) {
+            indexingWorker.cancel(true);
         }
+
+        int total = entries.size();
+        indexProgressBar.setMinimum(0);
+        indexProgressBar.setMaximum(total);
+        indexProgressBar.setValue(0);
+        indexProgressBar.setString("インデックス作成中... 0 / " + total);
+        indexProgressBar.setVisible(true);
+        refreshMenuItem.setEnabled(false);
+
+        indexingWorker = new SwingWorker<>() {
+            @Override
+            protected List<TableLookupService.EnrichedScreenshot> doInBackground() {
+                List<TableLookupService.EnrichedScreenshot> enriched = new ArrayList<>(total);
+                int done = 0;
+                for (ScreenshotEntry entry : entries) {
+                    if (isCancelled()) {
+                        break;
+                    }
+                    enriched.add(chartResolverService.enrich(entry));
+                    done++;
+                    publish(done);
+                }
+                return enriched;
+            }
+
+            @Override
+            protected void process(List<Integer> chunks) {
+                int latest = chunks.get(chunks.size() - 1);
+                indexProgressBar.setValue(latest);
+                indexProgressBar.setString("インデックス作成中... " + latest + " / " + total);
+            }
+
+            @Override
+            protected void done() {
+                refreshMenuItem.setEnabled(true);
+                indexProgressBar.setVisible(false);
+                if (isCancelled()) {
+                    return;
+                }
+                try {
+                    screenshotDatabase.syncAll(get());
+                    databasePanel.reload(screenshotDatabase);
+                    statusLabel.setText(total + " 件のスクショ");
+                } catch (Exception e) {
+                    statusLabel.setText("DB 同期失敗: " + e.getMessage());
+                }
+            }
+        };
+        indexingWorker.execute();
     }
 
     private void syncDatabaseEntry(ScreenshotEntry entry) {
