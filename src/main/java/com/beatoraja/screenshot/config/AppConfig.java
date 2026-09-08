@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AppConfig {
@@ -24,6 +26,8 @@ public class AppConfig {
     private String beatorajaDirectory = "";
     private String playerName = "";
     private List<DiscordWebhookEntry> discordWebhooks = new ArrayList<>();
+    private List<String> tablePriorityOrder = new ArrayList<>();
+    private List<TableNotationRule> tableNotationRules = new ArrayList<>();
     private String twitterBrowser = "";
     private String twitterChromeProfile = "";
     private String twitterAuthToken = "";
@@ -98,6 +102,22 @@ public class AppConfig {
         this.discordWebhooks = discordWebhooks == null ? new ArrayList<>() : discordWebhooks;
     }
 
+    public List<String> getTablePriorityOrder() {
+        return tablePriorityOrder;
+    }
+
+    public void setTablePriorityOrder(List<String> tablePriorityOrder) {
+        this.tablePriorityOrder = tablePriorityOrder == null ? new ArrayList<>() : tablePriorityOrder;
+    }
+
+    public List<TableNotationRule> getTableNotationRules() {
+        return tableNotationRules;
+    }
+
+    public void setTableNotationRules(List<TableNotationRule> tableNotationRules) {
+        this.tableNotationRules = tableNotationRules == null ? new ArrayList<>() : tableNotationRules;
+    }
+
     public String getTwitterBrowser() {
         return twitterBrowser;
     }
@@ -165,6 +185,47 @@ public class AppConfig {
         @Override
         public String toString() {
             return name == null || name.isBlank() ? url : name;
+        }
+    }
+
+    /**
+     * Per-difficulty-table notation customization: symbol replacements keyed by
+     * the raw symbol they replace ("sl を STELLA に変える" — most tables only need
+     * one entry, but some switch symbol partway through their levels, e.g. "A1"
+     * .. "A9" then "AA1" ..) plus whether this table's notation should always be
+     * included in the default post notation even when a higher-priority table
+     * already provides one for the same song.
+     */
+    public static class TableNotationRule {
+        private String tableTag = "";
+        private boolean alwaysInclude;
+        private Map<String, String> symbolOverrides = new LinkedHashMap<>();
+
+        public TableNotationRule() {
+        }
+
+        public String getTableTag() {
+            return tableTag;
+        }
+
+        public void setTableTag(String tableTag) {
+            this.tableTag = tableTag == null ? "" : tableTag;
+        }
+
+        public boolean isAlwaysInclude() {
+            return alwaysInclude;
+        }
+
+        public void setAlwaysInclude(boolean alwaysInclude) {
+            this.alwaysInclude = alwaysInclude;
+        }
+
+        public Map<String, String> getSymbolOverrides() {
+            return symbolOverrides;
+        }
+
+        public void setSymbolOverrides(Map<String, String> symbolOverrides) {
+            this.symbolOverrides = symbolOverrides == null ? new LinkedHashMap<>() : symbolOverrides;
         }
     }
 }

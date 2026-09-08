@@ -35,12 +35,46 @@ public class ChartResolverService implements AutoCloseable {
 
         BeatorajaPaths paths = BeatorajaPaths.resolve(beatorajaDirectory, config.getPlayerName());
         registry.loadFromTableDirectory(paths.tableDirectory());
+        registry.setTablePriority(config.getTablePriorityOrder());
+        registry.setNotationRules(toRegistryRules(config.getTableNotationRules()));
         try {
             playLogService = new PlayerPlayLogService(paths.scoreDataLogDb());
             songDatabaseService = new SongDatabaseService(paths.songDatabase());
         } catch (java.sql.SQLException e) {
             throw new IOException("プレイヤーデータベースを開けません: " + e.getMessage(), e);
         }
+    }
+
+    public List<DifficultyTableRegistry.TableInfo> getKnownTables() {
+        return registry.getKnownTables();
+    }
+
+    public List<String> getSymbolsForTag(String tag) {
+        return registry.getSymbolsForTag(tag);
+    }
+
+    public List<String> getNotationsForTagAndSymbol(String tag, String symbol) {
+        return registry.getNotationsForTagAndSymbol(tag, symbol);
+    }
+
+    public List<String> getFailedTableFiles() {
+        return registry.getFailedTableFiles();
+    }
+
+    public int getLoadedFileCount() {
+        return registry.getLoadedFileCount();
+    }
+
+    private List<DifficultyTableRegistry.TableNotationRule> toRegistryRules(List<AppConfig.TableNotationRule> configRules) {
+        List<DifficultyTableRegistry.TableNotationRule> result = new ArrayList<>();
+        if (configRules == null) {
+            return result;
+        }
+        for (AppConfig.TableNotationRule rule : configRules) {
+            result.add(new DifficultyTableRegistry.TableNotationRule(
+                    rule.getTableTag(), rule.isAlwaysInclude(), rule.getSymbolOverrides()));
+        }
+        return result;
     }
 
     public TableLookupService.EnrichedScreenshot enrich(ScreenshotEntry entry) {
@@ -77,27 +111,32 @@ public class ChartResolverService implements AutoCloseable {
 
             String md5 = song == null ? "" : song.md5();
             String sha256 = best.sha256();
-            String title = song != null && !song.fullTitle().isBlank() ? song.fullTitle() : entry.getTitle();
-            List<String> notations = registry.findNotationsByHash(sha256, md5);
-            if (notations.isEmpty() && !title.isBlank()) {
-                notations = registry.findNotationsForTitle(title);
+            String fullTitle = song != null && !song.fullTitle().isBlank() ? song.fullTitle() : entry.getTitle();
+            String bareTitle = song != null ? song.title() : "";
+
+            DifficultyTableRegistry.NotationResolution resolution = registry.resolveByHash(sha256, md5);
+            // Difficulty tables register songs under either the bare TITLE or the
+            // TITLE+SUBTITLE display form depending on the table generator, so try both.
+            if (resolution.candidates().isEmpty() && !fullTitle.isBlank()) {
+                resolution = registry.resolveForTitle(fullTitle);
+            }
+            if (resolution.candidates().isEmpty() && !bareTitle.isBlank() && !bareTitle.equals(fullTitle)) {
+                resolution = registry.resolveForTitle(bareTitle);
             }
 
-            String preferred = choosePreferredNotation(entry.getRawTableFolder(), notations);
-            return new ResolvedChart(sha256, md5, title, preferred, notations, song != null ? String.valueOf(song.level()) : "");
+            String primaryNotation = resolution.primary();
+            if (primaryNotation.isBlank() && entry.getRawTableFolder() != null && !entry.getRawTableFolder().isBlank()) {
+                primaryNotation = registry.parseFolderName(entry.getRawTableFolder()).notation();
+            }
+            String defaultPostNotation = !resolution.defaultPostNotation().isBlank()
+                    ? resolution.defaultPostNotation()
+                    : primaryNotation;
+
+            return new ResolvedChart(sha256, md5, fullTitle, primaryNotation, defaultPostNotation,
+                    resolution.candidates(), song != null ? String.valueOf(song.level()) : "");
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private String choosePreferredNotation(String rawTableFolder, List<String> notations) {
-        if (!notations.isEmpty()) {
-            return notations.get(0);
-        }
-        if (rawTableFolder != null && !rawTableFolder.isBlank()) {
-            return registry.parseFolderName(rawTableFolder).notation();
-        }
-        return "";
     }
 
     private TableLookupService.EnrichedScreenshot enrichFromFilename(ScreenshotEntry entry) {
@@ -110,29 +149,33 @@ public class ChartResolverService implements AutoCloseable {
             parsed = TableLevelParser.ParsedTableLevel.empty();
         }
 
-        List<String> available = new ArrayList<>(registry.findNotationsForTitle(entry.getTitle()));
-        String defaultNotation = parsed.notation();
-        if (!defaultNotation.isBlank() && !available.contains(defaultNotation)) {
-            available.add(0, defaultNotation);
+        DifficultyTableRegistry.NotationResolution resolution = registry.resolveForTitle(entry.getTitle());
+        List<String> available = new ArrayList<>(resolution.candidates());
+        String folderNotation = parsed.notation();
+        String primaryNotation = !folderNotation.isBlank() ? folderNotation : resolution.primary();
+        if (!primaryNotation.isBlank() && !available.contains(primaryNotation)) {
+            available.add(0, primaryNotation);
         }
-        if (defaultNotation.isBlank() && !available.isEmpty()) {
-            defaultNotation = available.get(0);
+        String defaultPostNotation = !folderNotation.isBlank() ? folderNotation : resolution.defaultPostNotation();
+        if (defaultPostNotation.isBlank() && !available.isEmpty()) {
+            defaultPostNotation = available.get(0);
         }
 
         return buildEnriched(entry, new ResolvedChart(
                 "",
                 "",
                 entry.getTitle(),
-                defaultNotation,
+                primaryNotation,
+                defaultPostNotation,
                 available,
                 entry.isBmsLevelOnly() ? entry.getLevel() : ""
         ));
     }
 
     private TableLookupService.EnrichedScreenshot buildEnriched(ScreenshotEntry entry, ResolvedChart resolved) {
-        TableLevelParser.ParsedTableLevel parsed = resolved.preferredNotation().isBlank()
+        TableLevelParser.ParsedTableLevel parsed = resolved.primaryNotation().isBlank()
                 ? TableLevelParser.ParsedTableLevel.empty()
-                : registry.parseNotation(resolved.preferredNotation());
+                : registry.parseNotation(resolved.primaryNotation());
 
         String tableSymbol = parsed.hasTableSymbol() ? parsed.symbol() : "";
         String tableLevelNum = parsed.hasTableSymbol() ? parsed.level() : "";
@@ -142,7 +185,7 @@ public class ChartResolverService implements AutoCloseable {
             tableLevelNum = "";
         }
 
-        List<String> available = mergeNotations(resolved.availableNotations(), resolved.preferredNotation(), entry.getRawTableFolder());
+        List<String> available = mergeNotations(resolved.availableNotations(), resolved.primaryNotation(), entry.getRawTableFolder());
 
         return new TableLookupService.EnrichedScreenshot(
                 entry,
@@ -154,7 +197,7 @@ public class ChartResolverService implements AutoCloseable {
                 bmsLevel,
                 tableSymbol,
                 parsed.hasTableSymbol() ? parsed.level() : bmsLevel,
-                resolved.preferredNotation(),
+                resolved.defaultPostNotation(),
                 available,
                 !resolved.sha256().isBlank()
         );
@@ -204,7 +247,8 @@ public class ChartResolverService implements AutoCloseable {
             String sha256,
             String md5,
             String title,
-            String preferredNotation,
+            String primaryNotation,
+            String defaultPostNotation,
             List<String> availableNotations,
             String bmsLevel
     ) {

@@ -65,7 +65,6 @@ public class MainFrame extends JFrame {
         initDatabase();
         reloadTableRegistry();
         buildUi();
-        databasePanel.setOwnerFrame(this);
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         reloadDiscordWebhooks();
         listPanel.setPostedStateStore(postedStateStore);
@@ -100,6 +99,12 @@ public class MainFrame extends JFrame {
         JMenuItem settingsItem = new JMenuItem("設定...");
         settingsItem.addActionListener(e -> openSettings());
         settingsMenu.add(settingsItem);
+        JMenuItem tablePriorityItem = new JMenuItem("難易度表の優先順位...");
+        tablePriorityItem.addActionListener(e -> openTablePriorityDialog());
+        settingsMenu.add(tablePriorityItem);
+        JMenuItem tableNotationRulesItem = new JMenuItem("難易度表ごとの投稿表記ルール...");
+        tableNotationRulesItem.addActionListener(e -> openTableNotationRulesDialog());
+        settingsMenu.add(tableNotationRulesItem);
         menuBar.add(settingsMenu);
         setJMenuBar(menuBar);
 
@@ -442,6 +447,93 @@ public class MainFrame extends JFrame {
             startWatcher();
         });
         dialog.setVisible(true);
+    }
+
+    private void warnAboutFailedTableFiles() {
+        List<String> failed = chartResolverService.getFailedTableFiles();
+        if (failed.isEmpty()) {
+            return;
+        }
+        JOptionPane.showMessageDialog(this,
+                "以下の難易度表ファイルの読み込みに失敗し、一覧に反映されていません:\n"
+                        + String.join("\n", failed)
+                        + "\n\nbeatoraja側でその表を再取得すると直る場合があります。",
+                "難易度表の読み込み失敗", JOptionPane.WARNING_MESSAGE);
+    }
+
+    private void openTablePriorityDialog() {
+        List<com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo> knownTables =
+                chartResolverService.getKnownTables();
+        if (knownTables.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "難易度表が読み込まれていません。設定でbeatorajaフォルダを指定してください。",
+                    "難易度表の優先順位", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        warnAboutFailedTableFiles();
+
+        java.util.Map<String, String> symbolOverrideByTag = new java.util.LinkedHashMap<>();
+        for (AppConfig.TableNotationRule rule : config.getTableNotationRules()) {
+            if (!rule.getSymbolOverrides().isEmpty()) {
+                String combined = String.join("/", new java.util.LinkedHashSet<>(rule.getSymbolOverrides().values()));
+                symbolOverrideByTag.put(rule.getTableTag(), combined);
+            }
+        }
+
+        TablePriorityDialog dialog = new TablePriorityDialog(this, config.getTablePriorityOrder(), knownTables,
+                symbolOverrideByTag, chartResolverService.getLoadedFileCount());
+        List<String> newOrder = dialog.showDialog();
+        if (newOrder == null) {
+            return;
+        }
+
+        config.setTablePriorityOrder(newOrder);
+        try {
+            config.save();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        refreshScreenshots();
+    }
+
+    private void openTableNotationRulesDialog() {
+        List<com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo> knownTables =
+                chartResolverService.getKnownTables();
+        if (knownTables.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "難易度表が読み込まれていません。設定でbeatorajaフォルダを指定してください。",
+                    "難易度表ごとの投稿表記ルール", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        warnAboutFailedTableFiles();
+
+        java.util.Map<String, java.util.Map<String, List<String>>> notationsByTagAndSymbol = new java.util.LinkedHashMap<>();
+        for (com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo info : knownTables) {
+            java.util.Map<String, List<String>> bySymbol = new java.util.LinkedHashMap<>();
+            for (String symbol : chartResolverService.getSymbolsForTag(info.tag())) {
+                bySymbol.put(symbol, chartResolverService.getNotationsForTagAndSymbol(info.tag(), symbol));
+            }
+            notationsByTagAndSymbol.put(info.tag(), bySymbol);
+        }
+
+        TableNotationRulesDialog dialog = new TableNotationRulesDialog(this, config.getTableNotationRules(),
+                knownTables, notationsByTagAndSymbol, chartResolverService.getLoadedFileCount());
+        List<AppConfig.TableNotationRule> newRules = dialog.showDialog();
+        if (newRules == null) {
+            return;
+        }
+
+        config.setTableNotationRules(newRules);
+        try {
+            config.save();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        refreshScreenshots();
     }
 
     @Override

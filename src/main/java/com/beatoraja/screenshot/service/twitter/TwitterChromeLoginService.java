@@ -17,7 +17,6 @@ public class TwitterChromeLoginService {
     private static final Duration STARTUP_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration EXTRACTION_TIMEOUT = Duration.ofSeconds(35);
     private static final Duration COOKIE_RETRY_INTERVAL = Duration.ofMillis(1000);
-    private static final Duration PROFILE_UNLOCK_TIMEOUT = Duration.ofSeconds(25);
     private static final Duration BROWSER_CLOSE_TIMEOUT = Duration.ofMinutes(2);
     private static final Duration COOKIE_FLUSH_DELAY = Duration.ofSeconds(2);
     private static final int EXTRACTION_ATTEMPTS = 2;
@@ -39,7 +38,7 @@ public class TwitterChromeLoginService {
         Path profileDir = profileDirectory();
         Files.createDirectories(profileDir);
         stopBrowser();
-        clearDebugArtifacts(profileDir);
+        ChromiumProfileLock.clearDebugArtifacts(profileDir);
 
         List<String> command = baseLaunchArgs(browser, profileDir, false);
         command.add("https://x.com/i/flow/login");
@@ -57,7 +56,7 @@ public class TwitterChromeLoginService {
         if (browserProcess == null || !browserProcess.isAlive()) {
             browserProcess = null;
             Thread.sleep(COOKIE_FLUSH_DELAY.toMillis());
-            waitForProfileUnlock();
+            ChromiumProfileLock.waitForProfileUnlock(profileDirectory());
             return;
         }
 
@@ -77,7 +76,7 @@ public class TwitterChromeLoginService {
 
         browserProcess = null;
         Thread.sleep(COOKIE_FLUSH_DELAY.toMillis());
-        waitForProfileUnlock();
+        ChromiumProfileLock.waitForProfileUnlock(profileDirectory());
     }
 
     public TwitterCookies extractCookiesFromProfile(BooleanSupplier cancelled)
@@ -86,7 +85,7 @@ public class TwitterChromeLoginService {
             throw new IOException("Cookie 取得前に、ログイン用ブラウザを閉じてください。");
         }
 
-        waitForProfileUnlock();
+        ChromiumProfileLock.waitForProfileUnlock(profileDirectory());
         if (cancelled.getAsBoolean()) {
             throw new IOException("ログインをキャンセルしました");
         }
@@ -100,7 +99,7 @@ public class TwitterChromeLoginService {
                 return runCdpExtraction(cancelled, attempt);
             } catch (IOException e) {
                 lastError = e;
-                clearDebugArtifacts(profileDirectory());
+                ChromiumProfileLock.clearDebugArtifacts(profileDirectory());
                 Thread.sleep(COOKIE_RETRY_INTERVAL.toMillis());
             }
         }
@@ -129,7 +128,7 @@ public class TwitterChromeLoginService {
 
         Path profileDir = profileDirectory();
         Files.createDirectories(profileDir);
-        clearDebugArtifacts(profileDir);
+        ChromiumProfileLock.clearDebugArtifacts(profileDir);
 
         List<String> command = baseLaunchArgs(browser, profileDir, true);
         command.add("--remote-debugging-port=0");
@@ -178,7 +177,7 @@ public class TwitterChromeLoginService {
             throw new IOException("Cookie 取得がタイムアウトしました（試行 " + attempt + "）");
         } finally {
             stopBrowser();
-            waitForProfileUnlock();
+            ChromiumProfileLock.waitForProfileUnlock(profileDirectory());
         }
     }
 
@@ -194,34 +193,6 @@ public class TwitterChromeLoginService {
             command.add("--disable-blink-features=AutomationControlled");
         }
         return command;
-    }
-
-    private void clearDebugArtifacts(Path profileDir) {
-        try {
-            Files.deleteIfExists(profileDir.resolve("DevToolsActivePort"));
-            Files.deleteIfExists(profileDir.resolve("DevToolsActivePort.lock"));
-        } catch (IOException ignored) {
-        }
-    }
-
-    private void waitForProfileUnlock() throws InterruptedException, IOException {
-        Path profileDir = profileDirectory();
-        Path singletonLock = profileDir.resolve("SingletonLock");
-        Path lockFile = profileDir.resolve("lockfile");
-        long deadline = System.currentTimeMillis() + PROFILE_UNLOCK_TIMEOUT.toMillis();
-
-        while (System.currentTimeMillis() < deadline) {
-            if (!Files.exists(singletonLock) && !Files.exists(lockFile)) {
-                Thread.sleep(400);
-                if (!Files.exists(singletonLock) && !Files.exists(lockFile)) {
-                    return;
-                }
-            }
-            Thread.sleep(200);
-        }
-        throw new IOException(
-                "ブラウザプロファイルのロック解除待ちがタイムアウトしました。"
-                        + " Chrome / Edge のウィンドウが残っていないか確認してください。");
     }
 
     public void stopBrowser() {

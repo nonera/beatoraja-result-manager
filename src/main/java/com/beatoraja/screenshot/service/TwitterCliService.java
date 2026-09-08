@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
+import com.beatoraja.screenshot.service.twitter.TwitterBrowserPostService;
 import com.beatoraja.screenshot.util.TwitterCliLocator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,12 +71,28 @@ public class TwitterCliService {
                 result = run(command, false);
             }
             if (result.exitCode() != 0) {
-                return PostResult.failed(formatFailureMessage(result));
+                return postViaBrowserFallback(text, imagePaths, formatFailureMessage(result));
             }
         }
 
         String tweetId = extractTweetId(result.output());
         return PostResult.ok(tweetId, result.output());
+    }
+
+    /**
+     * The GraphQL client used above can fail for reasons that don't affect posting
+     * manually through the browser (daily posting caps, stale CSRF tokens after the
+     * browser profile's cookies rotate, transient API errors, ...). Rather than trying
+     * to special-case each one, any post failure falls back to auto-filling the real
+     * compose page and letting the user click Post themselves. If that also fails,
+     * both error messages are surfaced so nothing gets lost.
+     */
+    private PostResult postViaBrowserFallback(String text, List<Path> imagePaths, String cliFailureMessage) {
+        PostResult browserResult = new TwitterBrowserPostService().post(text, imagePaths);
+        if (browserResult.success()) {
+            return browserResult;
+        }
+        return PostResult.failed(cliFailureMessage + "\n\nブラウザ投稿も失敗しました: " + browserResult.message());
     }
 
     private boolean shouldRetryAfterRefresh(CommandResult result) {

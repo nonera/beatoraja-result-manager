@@ -32,14 +32,15 @@ public class SongDatabaseService implements AutoCloseable {
                 if (sha256 == null || sha256.isBlank() || bySha256.containsKey(sha256)) {
                     continue;
                 }
-                String title = rs.getString("title");
+                String title = nullToEmpty(rs.getString("title"));
                 String subtitle = rs.getString("subtitle");
                 String fullTitle = subtitle == null || subtitle.isBlank()
-                        ? nullToEmpty(title)
-                        : nullToEmpty(title) + " " + subtitle.trim();
+                        ? title
+                        : title + " " + subtitle.trim();
                 bySha256.put(sha256, new SongRecord(
                         nullToEmpty(rs.getString("md5")),
                         sha256,
+                        title,
                         fullTitle,
                         rs.getInt("level")
                 ));
@@ -68,6 +69,11 @@ public class SongDatabaseService implements AutoCloseable {
         bySha256.clear();
     }
 
-    public record SongRecord(String md5, String sha256, String fullTitle, int level) {
+    /**
+     * {@code title} is the bare TITLE field; {@code fullTitle} is TITLE + SUBTITLE
+     * concatenated the way beatoraja displays it. Difficulty tables vary on which
+     * of the two they register songs under, so callers should try both.
+     */
+    public record SongRecord(String md5, String sha256, String title, String fullTitle, int level) {
     }
 }

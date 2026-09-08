@@ -3,17 +3,11 @@ package com.beatoraja.screenshot.ui;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 
-import javax.swing.JButton;
-import javax.swing.JMenuItem;
 import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.table.AbstractTableModel;
 import java.awt.BorderLayout;
-import java.awt.Frame;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +21,6 @@ public class DatabasePanel extends JPanel {
     private final DatabaseTableModel tableModel = new DatabaseTableModel();
     private final JTable table = new JTable(tableModel);
     private ScreenshotDatabase database;
-    private Frame ownerFrame;
     private NotationChangeListener notationChangeListener;
 
     public DatabasePanel() {
@@ -43,28 +36,7 @@ public class DatabasePanel extends JPanel {
         table.getColumnModel().getColumn(6).setPreferredWidth(100);
         table.getColumnModel().getColumn(7).setPreferredWidth(90);
 
-        table.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                maybeShowPopup(e);
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                maybeShowPopup(e);
-            }
-        });
-
-        JPanel top = new JPanel(new BorderLayout());
-        JButton pickNotation = new JButton("候補から投稿表記を選択...");
-        pickNotation.addActionListener(e -> openNotationPicker());
-        top.add(pickNotation, BorderLayout.EAST);
-        add(top, BorderLayout.NORTH);
         add(new JScrollPane(table), BorderLayout.CENTER);
-    }
-
-    public void setOwnerFrame(Frame ownerFrame) {
-        this.ownerFrame = ownerFrame;
     }
 
     public void setNotationChangeListener(NotationChangeListener listener) {
@@ -83,46 +55,6 @@ public class DatabasePanel extends JPanel {
         }
         int modelRow = table.convertRowIndexToModel(viewRow);
         return tableModel.getRecordAt(modelRow);
-    }
-
-    private void maybeShowPopup(MouseEvent e) {
-        if (!e.isPopupTrigger()) {
-            return;
-        }
-        int row = table.rowAtPoint(e.getPoint());
-        if (row < 0) {
-            return;
-        }
-        table.setRowSelectionInterval(row, row);
-
-        JPopupMenu menu = new JPopupMenu();
-        JMenuItem pick = new JMenuItem("候補から投稿表記を選択...");
-        pick.addActionListener(ev -> openNotationPicker());
-        menu.add(pick);
-        menu.show(e.getComponent(), e.getX(), e.getY());
-    }
-
-    private void openNotationPicker() {
-        ScreenshotRecord record = getSelectedRecord();
-        if (record == null || database == null || ownerFrame == null) {
-            return;
-        }
-
-        NotationPickerDialog.Result result = new NotationPickerDialog(ownerFrame, record).showDialog();
-        if (result == null) {
-            return;
-        }
-
-        try {
-            database.updateNotation(record.id(), result.tableSymbol(), result.postNotation());
-            reload(database);
-            if (notationChangeListener != null) {
-                notationChangeListener.onNotationChanged();
-            }
-        } catch (SQLException ex) {
-            javax.swing.JOptionPane.showMessageDialog(this, "保存に失敗しました: " + ex.getMessage(),
-                    "エラー", javax.swing.JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private class DatabaseTableModel extends AbstractTableModel {

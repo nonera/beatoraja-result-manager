@@ -19,9 +19,19 @@ public final class BmtTableReader {
     }
 
     public static List<BmtTableData> readAll(Path tablePath) throws IOException {
+        return readAllWithDiagnostics(tablePath).tables();
+    }
+
+    /**
+     * Like {@link #readAll}, but also reports which .bmt files failed to parse
+     * (corrupt, unexpected structure, etc.) instead of silently dropping them -
+     * so a table that's missing from the app can actually be tracked down.
+     */
+    public static ReadResult readAllWithDiagnostics(Path tablePath) throws IOException {
         List<BmtTableData> tables = new ArrayList<>();
+        List<String> failedFiles = new ArrayList<>();
         if (tablePath == null || !Files.isDirectory(tablePath)) {
-            return tables;
+            return new ReadResult(tables, failedFiles);
         }
 
         try (var stream = Files.list(tablePath)) {
@@ -29,14 +39,20 @@ public final class BmtTableReader {
                     .forEach(path -> {
                         try {
                             BmtTableData table = read(path);
-                            if (table != null && table.folder != null) {
+                            if (table != null) {
                                 tables.add(table);
+                            } else {
+                                failedFiles.add(path.getFileName().toString());
                             }
-                        } catch (IOException ignored) {
+                        } catch (Exception e) {
+                            failedFiles.add(path.getFileName().toString());
                         }
                     });
         }
-        return tables;
+        return new ReadResult(tables, failedFiles);
+    }
+
+    public record ReadResult(List<BmtTableData> tables, List<String> failedFiles) {
     }
 
     public static BmtTableData read(Path path) throws IOException {

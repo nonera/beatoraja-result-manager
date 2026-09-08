@@ -84,6 +84,15 @@ public class ChromiumDevToolsClient implements AutoCloseable {
         }
     }
 
+    /**
+     * Opens (or reuses) a tab in this debugged browser and returns a connected CDP session,
+     * for callers that need to drive the page directly (e.g. UI automation).
+     */
+    public ChromiumCdpSession openSession(String initialUrl) throws Exception {
+        String webSocketUrl = findOrCreatePage(initialUrl);
+        return ChromiumCdpSession.connect(httpClient, webSocketUrl, HTTP_TIMEOUT);
+    }
+
     private TwitterCookies parseCookies(JsonNode result) throws IOException {
         Map<String, String> values = new HashMap<>();
         for (JsonNode cookie : result.path("cookies")) {

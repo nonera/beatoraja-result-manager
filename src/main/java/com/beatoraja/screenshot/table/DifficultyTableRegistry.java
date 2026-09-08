@@ -14,16 +14,47 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 public class DifficultyTableRegistry {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final List<String> knownTags = new ArrayList<>();
+    private final List<String> tableKeys = new ArrayList<>();
+    private final Map<String, String> tagNames = new LinkedHashMap<>();
+    private final Map<String, Map<String, Set<String>>> notationsByTagAndSymbol = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesByTitle = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesBySha256 = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesByMd5 = new LinkedHashMap<>();
+    private List<String> tablePriority = List.of();
+    private List<String> failedTableFiles = List.of();
+    private int loadedFileCount;
+    private Map<String, TableNotationRule> notationRulesByTag = Map.of();
+
+    /**
+     * Order in which table tags should be preferred when a song's symbol/notation is
+     * ambiguous across multiple loaded difficulty tables. Tags not listed sort last,
+     * in their existing (alphabetical) order.
+     */
+    public void setTablePriority(List<String> tagsInPriorityOrder) {
+        this.tablePriority = tagsInPriorityOrder == null ? List.of() : List.copyOf(tagsInPriorityOrder);
+    }
+
+    /**
+     * Per-table exact-match notation rewrites, and which tables should always
+     * contribute to the default notation even when outranked by another table.
+     */
+    public void setNotationRules(List<TableNotationRule> rules) {
+        Map<String, TableNotationRule> map = new LinkedHashMap<>();
+        if (rules != null) {
+            for (TableNotationRule rule : rules) {
+                if (rule.tableTag() != null && !rule.tableTag().isBlank()) {
+                    map.put(rule.tableTag(), rule);
+                }
+            }
+        }
+        this.notationRulesByTag = map;
+    }
 
     public void loadFromBeatoraja(Path beatorajaDirectory) throws IOException {
         clear();
@@ -32,9 +63,7 @@ public class DifficultyTableRegistry {
         }
 
         Path tablePath = resolveTablePath(beatorajaDirectory);
-        for (BmtTableReader.BmtTableData table : BmtTableReader.readAll(tablePath)) {
-            registerTable(table);
-        }
+        loadFromResolvedTablePath(tablePath);
     }
 
     public void loadFromTableDirectory(Path tablePath) throws IOException {
@@ -42,9 +71,32 @@ public class DifficultyTableRegistry {
         if (tablePath == null || !Files.isDirectory(tablePath)) {
             return;
         }
-        for (BmtTableReader.BmtTableData table : BmtTableReader.readAll(tablePath)) {
+        loadFromResolvedTablePath(tablePath);
+    }
+
+    private void loadFromResolvedTablePath(Path tablePath) throws IOException {
+        BmtTableReader.ReadResult result = BmtTableReader.readAllWithDiagnostics(tablePath);
+        for (BmtTableReader.BmtTableData table : result.tables()) {
             registerTable(table);
         }
+        failedTableFiles = result.failedFiles();
+        loadedFileCount = result.tables().size();
+    }
+
+    /** .bmt files that failed to parse during the last load, by file name. */
+    public List<String> getFailedTableFiles() {
+        return failedTableFiles;
+    }
+
+    /**
+     * Number of .bmt files successfully parsed on the last load, before collapsing
+     * same-tag/same-name entries into one table. If this is much higher than
+     * {@link #getKnownTables()}'s size, the table directory likely has stale
+     * duplicate .bmt files left behind by whatever manages it (e.g. beatoraja
+     * itself or an external tool like BeMusicSeeker re-exporting without cleanup).
+     */
+    public int getLoadedFileCount() {
+        return loadedFileCount;
     }
 
     private Path resolveTablePath(Path beatorajaDirectory) throws IOException {
@@ -63,8 +115,18 @@ public class DifficultyTableRegistry {
     }
 
     private void registerTable(BmtTableReader.BmtTableData table) {
+        String tableName = table.name == null ? "" : table.name;
+        // Symbols (e.g. "sl") are only reliable for TableLevelParser's folder-name
+        // parsing; they're not a safe identity key (some sources reuse the same
+        // symbol across distinct tables, or vary it across re-exports of the same
+        // table). Identity/dedup instead uses an exact match on the official name.
         if (table.tag != null && !table.tag.isBlank()) {
             knownTags.add(table.tag);
+        }
+        String tableKey = tableName;
+        if (!tableKey.isBlank()) {
+            tableKeys.add(tableKey);
+            tagNames.putIfAbsent(tableKey, tableName);
         }
 
         if (table.folder == null) {
@@ -82,13 +144,20 @@ public class DifficultyTableRegistry {
                 continue;
             }
 
+            String folderTag = !tableKey.isBlank() ? tableKey : parsed.symbol();
+            if (!parsed.symbol().isBlank()) {
+                notationsByTagAndSymbol.computeIfAbsent(folderTag, ignored -> new LinkedHashMap<>())
+                        .computeIfAbsent(parsed.symbol(), ignored -> new LinkedHashSet<>())
+                        .add(notation);
+            }
+
             for (BmtTableReader.BmtSong song : folder.songs) {
                 if (song.title == null || song.title.isBlank()) {
                     continue;
                 }
                 TableMatch match = new TableMatch(
-                        table.name == null ? "" : table.name,
-                        table.tag == null ? parsed.symbol() : table.tag,
+                        tableName,
+                        folderTag,
                         parsed.symbol(),
                         parsed.level(),
                         notation,
@@ -113,10 +182,25 @@ public class DifficultyTableRegistry {
         if (title == null || title.isBlank()) {
             return List.of();
         }
-        return toNotationList(collectByTitle(title));
+        return resolve(collectByTitle(title)).candidates();
     }
 
     public List<String> findNotationsByHash(String sha256, String md5) {
+        return resolve(collectByHash(sha256, md5)).candidates();
+    }
+
+    public NotationResolution resolveForTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return new NotationResolution("", "", List.of());
+        }
+        return resolve(collectByTitle(title));
+    }
+
+    public NotationResolution resolveByHash(String sha256, String md5) {
+        return resolve(collectByHash(sha256, md5));
+    }
+
+    private Set<TableMatch> collectByHash(String sha256, String md5) {
         Set<TableMatch> matches = new LinkedHashSet<>();
         if (sha256 != null && !sha256.isBlank()) {
             Set<TableMatch> found = matchesBySha256.get(sha256.toLowerCase(Locale.ROOT));
@@ -130,32 +214,72 @@ public class DifficultyTableRegistry {
                 matches.addAll(found);
             }
         }
-        return toNotationList(matches);
-    }
-
-    private Set<TableMatch> collectByTitle(String title) {
-        Set<TableMatch> matches = new LinkedHashSet<>();
-        String key = normalizeTitle(title);
-
-        Set<TableMatch> exact = matchesByTitle.get(key);
-        if (exact != null) {
-            matches.addAll(exact);
-        }
-
-        for (Map.Entry<String, Set<TableMatch>> entry : matchesByTitle.entrySet()) {
-            if (entry.getKey().contains(key) || key.contains(entry.getKey())) {
-                matches.addAll(entry.getValue());
-            }
-        }
         return matches;
     }
 
-    private List<String> toNotationList(Set<TableMatch> matches) {
-        Set<String> notations = new TreeSet<>(Comparator.naturalOrder());
-        for (TableMatch match : matches) {
-            notations.add(match.notation());
+    private Set<TableMatch> collectByTitle(String title) {
+        String key = normalizeTitle(title);
+        Set<TableMatch> exact = matchesByTitle.get(key);
+        return exact != null ? exact : Set.of();
+    }
+
+    /**
+     * Sorts matches by table priority, applies each table's rename rules, and
+     * combines the top-priority notation with any "always include" tables'
+     * notations into a single default while keeping every distinct notation
+     * available as a candidate (e.g. for manual selection).
+     */
+    private NotationResolution resolve(Set<TableMatch> matches) {
+        List<TableMatch> ordered = new ArrayList<>(matches);
+        ordered.sort(Comparator
+                .comparingInt((TableMatch match) -> priorityIndex(match.tableTag()))
+                .thenComparing(TableMatch::notation));
+
+        Set<String> candidates = new LinkedHashSet<>();
+        String preferred = null;
+        List<String> alwaysInclude = new ArrayList<>();
+        for (TableMatch match : ordered) {
+            String effective = applyRename(match);
+            candidates.add(effective);
+            if (preferred == null) {
+                preferred = effective;
+            }
+            TableNotationRule rule = notationRulesByTag.get(match.tableTag());
+            if (rule != null && rule.alwaysInclude() && !effective.equals(preferred) && !alwaysInclude.contains(effective)) {
+                alwaysInclude.add(effective);
+            }
         }
-        return new ArrayList<>(notations);
+
+        if (preferred == null) {
+            return new NotationResolution("", "", List.of());
+        }
+        List<String> defaultParts = new ArrayList<>();
+        defaultParts.add(preferred);
+        defaultParts.addAll(alwaysInclude);
+        return new NotationResolution(preferred, String.join("/", defaultParts), new ArrayList<>(candidates));
+    }
+
+    /**
+     * Most tables use one symbol for every level (e.g. "sl1".."sl12" all use "sl"),
+     * but some switch partway through (e.g. "A1".."A9" then "AA1".."AA9"), so renaming
+     * is keyed per raw symbol within the table rather than one substitution for the
+     * whole table: the new symbol is just re-combined with the match's own level.
+     */
+    private String applyRename(TableMatch match) {
+        TableNotationRule rule = notationRulesByTag.get(match.tableTag());
+        if (rule == null || match.symbol().isBlank()) {
+            return match.notation();
+        }
+        String override = rule.symbolOverrides().get(match.symbol());
+        if (override == null || override.isBlank()) {
+            return match.notation();
+        }
+        return override + match.level();
+    }
+
+    private int priorityIndex(String tableTag) {
+        int index = tablePriority.indexOf(tableTag);
+        return index < 0 ? Integer.MAX_VALUE : index;
     }
 
     public TableLevelParser.ParsedTableLevel parseFolderName(String folderName) {
@@ -170,8 +294,46 @@ public class DifficultyTableRegistry {
         return List.copyOf(knownTags);
     }
 
+    public List<TableInfo> getKnownTables() {
+        Set<String> seen = new LinkedHashSet<>(tableKeys);
+        List<TableInfo> result = new ArrayList<>();
+        for (String key : seen) {
+            result.add(new TableInfo(key, tagNames.getOrDefault(key, key)));
+        }
+        return result;
+    }
+
+    /**
+     * All distinct raw symbols (e.g. "A", "AA") registered under the given table,
+     * in the order their folders appear. Usually just one; tables that switch
+     * symbol partway through their level progression have more than one.
+     */
+    public List<String> getSymbolsForTag(String tag) {
+        Map<String, Set<String>> bySymbol = notationsByTagAndSymbol.get(tag);
+        return bySymbol == null ? List.of() : new ArrayList<>(bySymbol.keySet());
+    }
+
+    /**
+     * All distinct notations (e.g. "A1".."A9") registered under the given table
+     * for one specific raw symbol, in the order their folders appear. Used to let
+     * the user see what a symbol rename will actually affect.
+     */
+    public List<String> getNotationsForTagAndSymbol(String tag, String symbol) {
+        Map<String, Set<String>> bySymbol = notationsByTagAndSymbol.get(tag);
+        if (bySymbol == null) {
+            return List.of();
+        }
+        Set<String> found = bySymbol.get(symbol);
+        return found == null ? List.of() : new ArrayList<>(found);
+    }
+
     public void clear() {
         knownTags.clear();
+        tableKeys.clear();
+        tagNames.clear();
+        notationsByTagAndSymbol.clear();
+        failedTableFiles = List.of();
+        loadedFileCount = 0;
         matchesByTitle.clear();
         matchesBySha256.clear();
         matchesByMd5.clear();
@@ -185,6 +347,28 @@ public class DifficultyTableRegistry {
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public record TableInfo(String tag, String name) {
+    }
+
+    /**
+     * {@code primary} is the single top-priority notation (used for symbol/level
+     * display); {@code defaultPostNotation} is {@code primary} plus any "always
+     * include" tables' notations joined with "/".
+     */
+    public record NotationResolution(String primary, String defaultPostNotation, List<String> candidates) {
+    }
+
+    /**
+     * {@code symbolOverrides} maps a raw symbol found in this table (e.g. "A") to
+     * its replacement (e.g. "Alpha"); the level number is kept as-is. Most tables
+     * only need one entry, but some switch symbol partway through their levels.
+     */
+    public record TableNotationRule(String tableTag, boolean alwaysInclude, Map<String, String> symbolOverrides) {
+        public TableNotationRule {
+            symbolOverrides = symbolOverrides == null ? Map.of() : symbolOverrides;
+        }
     }
 
     public record TableMatch(
