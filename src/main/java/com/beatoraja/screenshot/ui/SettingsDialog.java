@@ -4,7 +4,10 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.TwitterCliService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
+import com.beatoraja.screenshot.player.BeatorajaPaths;
+
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
@@ -21,6 +24,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,7 +38,7 @@ public class SettingsDialog extends JDialog {
     private final SaveListener listener;
     private final JTextField screenshotDirField = new JTextField(32);
     private final JTextField beatorajaDirField = new JTextField(32);
-    private final JTextField playerNameField = new JTextField(32);
+    private final JComboBox<String> playerNameCombo = new JComboBox<>();
     private final JLabel twitterStatusLabel = new JLabel("未確認");
     private final WebhookTableModel webhookTableModel = new WebhookTableModel();
 
@@ -85,7 +89,13 @@ public class SettingsDialog extends JDialog {
         gbc.gridy++;
         form.add(new JLabel("プレイヤー名"), gbc);
         gbc.gridx = 1;
-        form.add(playerNameField, gbc);
+        JPanel playerPanel = new JPanel(new BorderLayout(6, 0));
+        playerNameCombo.setEditable(true);
+        playerPanel.add(playerNameCombo, BorderLayout.CENTER);
+        JButton refreshPlayers = new JButton("更新");
+        refreshPlayers.addActionListener(e -> refreshPlayerNames());
+        playerPanel.add(refreshPlayers, BorderLayout.EAST);
+        form.add(playerPanel, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
@@ -159,9 +169,29 @@ public class SettingsDialog extends JDialog {
     private void loadValues() {
         screenshotDirField.setText(config.getScreenshotDirectory());
         beatorajaDirField.setText(config.getBeatorajaDirectory());
-        playerNameField.setText(config.getPlayerName());
         webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
         twitterStatusLabel.setText(config.hasManualTwitterAuth() ? "ログイン情報あり（未確認）" : "未ログイン");
+        refreshPlayerNames();
+        playerNameCombo.getEditor().setItem(config.getPlayerName());
+    }
+
+    private void refreshPlayerNames() {
+        String current = playerNameCombo.getEditor() != null
+                ? String.valueOf(playerNameCombo.getEditor().getItem())
+                : config.getPlayerName();
+
+        playerNameCombo.removeAllItems();
+        playerNameCombo.addItem("");
+
+        String beatorajaDirText = beatorajaDirField.getText().trim();
+        if (!beatorajaDirText.isBlank()) {
+            Path beatorajaDir = Path.of(beatorajaDirText);
+            for (String name : BeatorajaPaths.listPlayerNames(beatorajaDir)) {
+                playerNameCombo.addItem(name);
+            }
+        }
+
+        playerNameCombo.getEditor().setItem(current == null ? "" : current);
     }
 
     private void refreshTwitterStatusQuietly() {
@@ -179,6 +209,7 @@ public class SettingsDialog extends JDialog {
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             beatorajaDirField.setText(chooser.getSelectedFile().getAbsolutePath());
+            refreshPlayerNames();
         }
     }
 
@@ -224,7 +255,8 @@ public class SettingsDialog extends JDialog {
 
         config.setScreenshotDirectory(screenshotDir.getAbsolutePath());
         config.setBeatorajaDirectory(beatorajaDirField.getText().trim());
-        config.setPlayerName(playerNameField.getText().trim());
+        String playerName = String.valueOf(playerNameCombo.getEditor().getItem()).trim();
+        config.setPlayerName(playerName);
         config.setDiscordWebhooks(webhookTableModel.getRows());
         config.setFirstRunCompleted(true);
 

@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
 
 public final class BeatorajaPaths {
 
@@ -76,6 +80,40 @@ public final class BeatorajaPaths {
                 songPath,
                 tablePath
         );
+    }
+
+    public static List<String> listPlayerNames(Path beatorajaDirectory) {
+        List<String> names = new ArrayList<>();
+        if (beatorajaDirectory == null) {
+            return names;
+        }
+
+        Path configFile = beatorajaDirectory.resolve("config_sys.json");
+        String playerPathValue = "player";
+        if (Files.exists(configFile)) {
+            try {
+                JsonNode root = MAPPER.readTree(configFile.toFile());
+                playerPathValue = root.path("playerpath").asText("player");
+            } catch (IOException ignored) {
+            }
+        }
+
+        Path playerPath = Path.of(playerPathValue);
+        if (!playerPath.isAbsolute()) {
+            playerPath = beatorajaDirectory.resolve(playerPath);
+        }
+        if (!Files.isDirectory(playerPath)) {
+            return names;
+        }
+
+        try (Stream<Path> stream = Files.list(playerPath)) {
+            stream.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .sorted(Comparator.naturalOrder())
+                    .forEach(names::add);
+        } catch (IOException ignored) {
+        }
+        return names;
     }
 
     public Path beatorajaDirectory() {
