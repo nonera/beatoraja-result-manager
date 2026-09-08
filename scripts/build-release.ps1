@@ -1,0 +1,64 @@
+param(
+    [string]$ProjectRoot = (Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Parent)
+)
+
+$ErrorActionPreference = "Stop"
+Set-Location $ProjectRoot
+
+Write-Host "==> Building Java application"
+& .\gradlew.bat clean shadowJar
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$shadowJar = Get-ChildItem "build\libs\beatoraja-screenshot-manager-*.jar" | Where-Object { $_.Name -notmatch "original" } | Select-Object -First 1
+if (-not $shadowJar) {
+    throw "shadowJar not found"
+}
+
+$distDir = Join-Path $ProjectRoot "dist\beatoraja-screenshot-manager"
+$toolsDir = Join-Path $distDir "tools"
+$inputDir = Join-Path $ProjectRoot "build\release-input"
+
+if (Test-Path $distDir) {
+    Remove-Item $distDir -Recurse -Force
+}
+New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
+
+Copy-Item $shadowJar.FullName (Join-Path $inputDir $shadowJar.Name)
+
+Write-Host "==> Creating app-image with jpackage"
+jpackage `
+    --type app-image `
+    --name beatoraja-screenshot-manager `
+    --input $inputDir `
+    --main-jar $shadowJar.Name `
+    --main-class com.beatoraja.screenshot.Main `
+    --dest (Join-Path $ProjectRoot "dist") `
+    --java-options "-Dapp.dir=`$APP_DIR"
+
+$appImageDir = Join-Path $ProjectRoot "dist\beatoraja-screenshot-manager"
+if (-not (Test-Path $appImageDir)) {
+    throw "jpackage output not found: $appImageDir"
+}
+
+Write-Host "==> Building bundled twitter.exe (optional, requires Python + twitter-cli)"
+$buildTwitterScript = Join-Path $ProjectRoot "scripts\build-twitter-cli.ps1"
+$twitterExe = Join-Path $appImageDir "tools\twitter.exe"
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    & $buildTwitterScript -ProjectRoot $ProjectRoot
+    Copy-Item (Join-Path $ProjectRoot "tools\twitter.exe") $twitterExe -Force
+    Write-Host "twitter.exe bundled"
+} else {
+    Write-Warning "Python not found. Skipping twitter.exe bundling."
+    Write-Warning "Run scripts\\build-twitter-cli.ps1 later, or place twitter.exe into dist/beatoraja-screenshot-manager/tools/"
+}
+
+$zipPath = Join-Path $ProjectRoot "dist\beatoraja-screenshot-manager.zip"
+if (Test-Path $zipPath) {
+    Remove-Item $zipPath -Force
+}
+Compress-Archive -Path $appImageDir -DestinationPath $zipPath
+
+Write-Host "Release created:"
+Write-Host "  $appImageDir"
+Write-Host "  $zipPath"

@@ -1,0 +1,389 @@
+package com.beatoraja.screenshot.ui;
+
+import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.db.ScreenshotDatabase;
+import com.beatoraja.screenshot.db.ScreenshotRecord;
+import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.service.DiscordWebhookService;
+import com.beatoraja.screenshot.service.PostedStateStore;
+import com.beatoraja.screenshot.service.ScreenshotScanner;
+import com.beatoraja.screenshot.service.ScreenshotWatcher;
+import com.beatoraja.screenshot.service.TweetTextGenerator;
+import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
+import com.beatoraja.screenshot.service.ChartResolverService;
+import com.beatoraja.screenshot.table.TableLookupService;
+
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
+import javax.swing.SwingUtilities;
+import javax.swing.border.EmptyBorder;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class MainFrame extends JFrame {
+
+    private final AppConfig config;
+    private PostedStateStore postedStateStore;
+    private ScreenshotWatcher screenshotWatcher;
+    private ScreenshotDatabase screenshotDatabase;
+    private final ChartResolverService chartResolverService = new ChartResolverService();
+
+    private final ScreenshotListPanel listPanel = new ScreenshotListPanel();
+    private final PreviewPanel previewPanel = new PreviewPanel();
+    private final DatabasePanel databasePanel = new DatabasePanel();
+    private final JLabel statusLabel = new JLabel("準備中...");
+    private final JComboBox<AppConfig.DiscordWebhookEntry> discordWebhookCombo = new JComboBox<>();
+    private final JButton twitterButton = new JButton("Twitter に投稿");
+    private final JButton discordButton = new JButton("Discord に送信");
+
+    public MainFrame(AppConfig config) {
+        super("beatoraja Screenshot Manager");
+        this.config = config;
+        this.postedStateStore = PostedStateStore.load();
+        initDatabase();
+        reloadTableRegistry();
+        buildUi();
+        databasePanel.setOwnerFrame(this);
+        databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
+        reloadDiscordWebhooks();
+        listPanel.setPostedStateStore(postedStateStore);
+        listPanel.setSelectionListener(this::onSelectionChanged);
+        refreshScreenshots();
+        startWatcher();
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(1200, 760);
+        setLocationRelativeTo(null);
+    }
+
+    private void initDatabase() {
+        try {
+            screenshotDatabase = new ScreenshotDatabase();
+        } catch (SQLException e) {
+            screenshotDatabase = null;
+            JOptionPane.showMessageDialog(this,
+                    "データベースの初期化に失敗しました: " + e.getMessage(),
+                    "警告", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void buildUi() {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu fileMenu = new JMenu("ファイル");
+        JMenuItem refreshItem = new JMenuItem("再読み込み");
+        refreshItem.addActionListener(e -> refreshScreenshots());
+        fileMenu.add(refreshItem);
+        menuBar.add(fileMenu);
+
+        JMenu settingsMenu = new JMenu("設定");
+        JMenuItem settingsItem = new JMenuItem("設定...");
+        settingsItem.addActionListener(e -> openSettings());
+        settingsMenu.add(settingsItem);
+        menuBar.add(settingsMenu);
+        setJMenuBar(menuBar);
+
+        JPanel galleryPanel = new JPanel(new BorderLayout());
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listPanel, previewPanel);
+        splitPane.setResizeWeight(0.35);
+        galleryPanel.add(splitPane, BorderLayout.CENTER);
+
+        JPanel actionPanel = new JPanel(new BorderLayout(8, 8));
+        actionPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        JPanel discordPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        discordPanel.add(new JLabel("Discord 送信先:"));
+        discordPanel.add(discordWebhookCombo);
+        actionPanel.add(discordPanel, BorderLayout.WEST);
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        twitterButton.addActionListener(e -> postToTwitter());
+        discordButton.addActionListener(e -> postToDiscord());
+        buttons.add(twitterButton);
+        buttons.add(discordButton);
+        actionPanel.add(buttons, BorderLayout.EAST);
+        galleryPanel.add(actionPanel, BorderLayout.NORTH);
+
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.addTab("ギャラリー", galleryPanel);
+        tabbedPane.addTab("データベース", databasePanel);
+        add(tabbedPane, BorderLayout.CENTER);
+        add(statusLabel, BorderLayout.SOUTH);
+
+        updateActionButtons(0);
+    }
+
+    private void reloadDiscordWebhooks() {
+        discordWebhookCombo.removeAllItems();
+        for (AppConfig.DiscordWebhookEntry webhook : config.getDiscordWebhooks()) {
+            if (webhook.getUrl() != null && !webhook.getUrl().isBlank()) {
+                discordWebhookCombo.addItem(webhook);
+            }
+        }
+        discordButton.setEnabled(discordWebhookCombo.getItemCount() > 0);
+    }
+
+    private void reloadTableRegistry() {
+        try {
+            chartResolverService.reload(config);
+        } catch (IOException e) {
+            statusLabel.setText("難易度表・プレイログの読み込みに失敗: " + e.getMessage());
+        }
+    }
+
+    private void onSelectionChanged(List<ScreenshotEntry> selectedEntries) {
+        String postNotation = resolvePostNotation(selectedEntries);
+        String message = TweetTextGenerator.generate(selectedEntries, postNotation);
+        previewPanel.showEntries(selectedEntries, message);
+        updateActionButtons(selectedEntries.size());
+        statusLabel.setText(selectedEntries.isEmpty()
+                ? "画像を選択してください"
+                : selectedEntries.size() + "枚選択中");
+    }
+
+    private void refreshSelectedTweetText() {
+        onSelectionChanged(listPanel.getSelectedEntries());
+    }
+
+    private String resolvePostNotation(List<ScreenshotEntry> selectedEntries) {
+        if (selectedEntries == null || selectedEntries.isEmpty() || screenshotDatabase == null) {
+            return "";
+        }
+        try {
+            ScreenshotRecord record = screenshotDatabase.findByFilePath(selectedEntries.get(0).getFilePath());
+            if (record != null && !record.postNotation().isBlank()) {
+                return record.postNotation();
+            }
+            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(selectedEntries.get(0));
+            return enriched.defaultPostNotation();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private void updateActionButtons(int selectedCount) {
+        twitterButton.setEnabled(selectedCount >= 1 && selectedCount <= 4);
+        discordButton.setEnabled(selectedCount >= 1 && selectedCount <= 10 && discordWebhookCombo.getItemCount() > 0);
+
+        twitterButton.setToolTipText(selectedCount > 4 ? "Twitter は最大4枚まで" : null);
+        discordButton.setToolTipText(selectedCount > 10 ? "Discord は最大10枚まで" : null);
+    }
+
+    private void refreshScreenshots() {
+        Path screenshotDir = Path.of(config.getScreenshotDirectory());
+        try {
+            reloadTableRegistry();
+            List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir);
+            listPanel.setEntries(entries);
+            syncDatabase(entries);
+            statusLabel.setText(entries.size() + " 件のスクショ");
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "スクショフォルダの読み込みに失敗しました: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void syncDatabase(List<ScreenshotEntry> entries) {
+        if (screenshotDatabase == null) {
+            return;
+        }
+        try {
+            List<TableLookupService.EnrichedScreenshot> enriched = entries.stream()
+                    .map(chartResolverService::enrich)
+                    .toList();
+            screenshotDatabase.syncAll(enriched);
+            databasePanel.reload(screenshotDatabase);
+        } catch (SQLException e) {
+            statusLabel.setText("DB 同期失敗: " + e.getMessage());
+        }
+    }
+
+    private void syncDatabaseEntry(ScreenshotEntry entry) {
+        if (screenshotDatabase == null) {
+            return;
+        }
+        try {
+            screenshotDatabase.upsert(chartResolverService.enrich(entry));
+            databasePanel.reload(screenshotDatabase);
+        } catch (SQLException e) {
+            statusLabel.setText("DB 更新失敗: " + e.getMessage());
+        }
+    }
+
+    private void startWatcher() {
+        if (screenshotWatcher != null) {
+            screenshotWatcher.close();
+        }
+        Path screenshotDir = Path.of(config.getScreenshotDirectory());
+        screenshotWatcher = new ScreenshotWatcher();
+        try {
+            screenshotWatcher.start(screenshotDir, entry -> SwingUtilities.invokeLater(() -> {
+                listPanel.addEntry(entry);
+                syncDatabaseEntry(entry);
+                statusLabel.setText("新しいスクショを検出: " + entry.getFileName());
+            }));
+        } catch (IOException e) {
+            statusLabel.setText("フォルダ監視を開始できませんでした");
+        }
+    }
+
+    private void postToTwitter() {
+        List<ScreenshotEntry> selected = listPanel.getSelectedEntries();
+        if (selected.isEmpty()) {
+            return;
+        }
+        if (selected.size() > 4) {
+            JOptionPane.showMessageDialog(this, "Twitter は最大4枚まで投稿できます。", "制限", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        TwitterAuthService authService = new TwitterAuthService(config);
+        if (!authService.hasStoredSession()) {
+            TwitterLoginDialog loginDialog = new TwitterLoginDialog(this, config);
+            TwitterCliService.AuthResult loginResult = loginDialog.showAndLogin();
+            if (!loginResult.success()) {
+                JOptionPane.showMessageDialog(this, loginResult.message(), "Twitter ログイン", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+
+        setPostingEnabled(false);
+        statusLabel.setText("Twitter に投稿中...");
+
+        String message = previewPanel.getMessage();
+        List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+
+        new Thread(() -> {
+            TwitterAuthService threadAuthService = new TwitterAuthService(config);
+            TwitterCliService.AuthResult verified = threadAuthService.verifyStoredSession();
+            if (!verified.success()) {
+                threadAuthService.refreshSilently();
+            }
+
+            TwitterCliService twitterCliService = new TwitterCliService(config);
+            TwitterCliService.PostResult result = twitterCliService.post(message, imagePaths);
+            SwingUtilities.invokeLater(() -> {
+                setPostingEnabled(true);
+                if (result.success()) {
+                    for (ScreenshotEntry entry : selected) {
+                        postedStateStore.markTwitterPosted(entry.getFileName(), result.tweetId());
+                    }
+                    savePostedStateQuietly();
+                    listPanel.setPostedStateStore(postedStateStore);
+                    statusLabel.setText("Twitter 投稿完了");
+                    JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    statusLabel.setText("Twitter 投稿失敗");
+                    if (result.message().contains("認証")) {
+                        int answer = JOptionPane.showConfirmDialog(
+                                this,
+                                result.message() + "\n\nTwitter に再ログインしますか？",
+                                "Twitter 投稿失敗",
+                                JOptionPane.YES_NO_OPTION
+                        );
+                        if (answer == JOptionPane.YES_OPTION) {
+                            TwitterLoginDialog loginDialog = new TwitterLoginDialog(this, config);
+                            loginDialog.showAndLogin();
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(this, result.message(), "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+        }, "twitter-post").start();
+    }
+
+    private void postToDiscord() {
+        List<ScreenshotEntry> selected = listPanel.getSelectedEntries();
+        if (selected.isEmpty()) {
+            return;
+        }
+        if (selected.size() > 10) {
+            JOptionPane.showMessageDialog(this, "Discord は最大10枚まで送信できます。", "制限", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        AppConfig.DiscordWebhookEntry webhook = (AppConfig.DiscordWebhookEntry) discordWebhookCombo.getSelectedItem();
+        if (webhook == null || webhook.getUrl() == null || webhook.getUrl().isBlank()) {
+            JOptionPane.showMessageDialog(this, "Discord Webhook URL を設定してください。", "設定不足", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        setPostingEnabled(false);
+        statusLabel.setText("Discord に送信中...");
+
+        String message = previewPanel.getMessage();
+        List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+
+        new Thread(() -> {
+            DiscordWebhookService discordWebhookService = new DiscordWebhookService();
+            DiscordWebhookService.PostResult result = discordWebhookService.post(webhook.getUrl(), message, imagePaths);
+            SwingUtilities.invokeLater(() -> {
+                setPostingEnabled(true);
+                if (result.success()) {
+                    for (ScreenshotEntry entry : selected) {
+                        postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
+                    }
+                    savePostedStateQuietly();
+                    listPanel.setPostedStateStore(postedStateStore);
+                    statusLabel.setText("Discord 送信完了");
+                    JOptionPane.showMessageDialog(this, "Discord に送信しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    statusLabel.setText("Discord 送信失敗");
+                    JOptionPane.showMessageDialog(this, result.message(), "Discord 送信失敗", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        }, "discord-post").start();
+    }
+
+    private void savePostedStateQuietly() {
+        try {
+            postedStateStore.save();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void setPostingEnabled(boolean enabled) {
+        twitterButton.setEnabled(enabled && listPanel.getSelectedCount() >= 1 && listPanel.getSelectedCount() <= 4);
+        discordButton.setEnabled(enabled && listPanel.getSelectedCount() >= 1 && listPanel.getSelectedCount() <= 10
+                && discordWebhookCombo.getItemCount() > 0);
+    }
+
+    private void openSettings() {
+        SettingsDialog dialog = new SettingsDialog(this, config, updatedConfig -> {
+            reloadDiscordWebhooks();
+            reloadTableRegistry();
+            refreshScreenshots();
+            startWatcher();
+        });
+        dialog.setVisible(true);
+    }
+
+    @Override
+    public void dispose() {
+        if (screenshotWatcher != null) {
+            screenshotWatcher.close();
+        }
+        if (screenshotDatabase != null) {
+            try {
+                screenshotDatabase.close();
+            } catch (SQLException ignored) {
+            }
+        }
+        chartResolverService.close();
+        super.dispose();
+    }
+}

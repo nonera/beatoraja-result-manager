@@ -1,0 +1,12 @@
+.gradle/
+build/
+dist/
+out/
+*.iml
+.idea/
+.vscode/
+config.json
+posted.json
+tools/twitter.exe
+tools/twitter/
+*.log
