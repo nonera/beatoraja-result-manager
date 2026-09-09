@@ -107,10 +107,10 @@ public final class FilenameParser {
 
         String remaining = body;
         if (!clearType.isEmpty()) {
-            remaining = remaining.replace(clearType, "").trim();
+            remaining = removeLastOccurrence(remaining, clearType).trim();
         }
         if (!rank.isEmpty()) {
-            remaining = remaining.replace(rank, "").trim();
+            remaining = removeLastOccurrence(remaining, rank).trim();
         }
 
         Matcher levelMatcher = LEVEL_PATTERN.matcher(remaining);
@@ -137,6 +137,21 @@ public final class FilenameParser {
             }
         }
         return "";
+    }
+
+    /**
+     * Removes only the right-most occurrence of {@code token} from {@code text}.
+     * Clear type / rank tags are appended after the title in the filename, so a
+     * global replace (as String.replace would do) can also strip matching
+     * characters out of the title itself -- most visibly for single-letter ranks
+     * like "A"/"B"/"C" that commonly appear inside song titles.
+     */
+    private static String removeLastOccurrence(String text, String token) {
+        int index = text.lastIndexOf(token);
+        if (index < 0) {
+            return text;
+        }
+        return text.substring(0, index) + text.substring(index + token.length());
     }
 
     private record ParsedMetadata(

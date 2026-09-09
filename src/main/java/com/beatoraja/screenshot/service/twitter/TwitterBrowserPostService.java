@@ -100,6 +100,15 @@ public class TwitterBrowserPostService {
             if (!focused) {
                 return ClixService.PostResult.failed("投稿本文の入力欄を操作できませんでした。");
             }
+            // X restores an unsent draft when the compose page loads. Input.insertText
+            // only inserts at the caret, so without clearing first, leftover text from
+            // a previous attempt gets stuck together with the new text.
+            evaluateBoolean(session,
+                    "(function(){var el=document.querySelector('" + TEXTAREA_SELECTOR + "');"
+                            + "if(!el){return false;}el.focus();"
+                            + "document.execCommand('selectAll',false,null);"
+                            + "document.execCommand('delete',false,null);"
+                            + "return true;})()");
             session.send("Input.insertText", Map.of("text", text == null ? "" : text), COMMAND_TIMEOUT);
 
             if (imagePaths != null && !imagePaths.isEmpty()) {
