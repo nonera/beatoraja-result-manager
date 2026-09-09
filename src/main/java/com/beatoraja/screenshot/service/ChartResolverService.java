@@ -53,6 +53,10 @@ public class ChartResolverService implements AutoCloseable {
         return registry.getSymbolsForTag(tag);
     }
 
+    public List<String> getSymbolsInPriorityOrder() {
+        return registry.getSymbolsInPriorityOrder();
+    }
+
     public List<String> getNotationsForTagAndSymbol(String tag, String symbol) {
         return registry.getNotationsForTagAndSymbol(tag, symbol);
     }

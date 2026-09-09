@@ -7,7 +7,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
-import javax.swing.border.TitledBorder;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -15,35 +14,37 @@ import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.List;
+import javax.swing.JSplitPane;
 
 public class PreviewPanel extends JPanel {
 
     private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
     private final JPanel multiPreviewPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-    private final JTextArea messageArea = new JTextArea(4, 40);
+    private final JTextArea messageArea = new JTextArea(3, 40);
     private final JScrollPane imageScrollPane = new JScrollPane(imageLabel);
 
     public PreviewPanel() {
-        setLayout(new BorderLayout(8, 8));
+        setLayout(new BorderLayout());
 
-        imageScrollPane.setPreferredSize(new Dimension(640, 360));
+        imageScrollPane.setPreferredSize(new Dimension(480, 400));
         multiPreviewPanel.setVisible(false);
 
-        JPanel previewContainer = new JPanel(new BorderLayout());
-        previewContainer.add(imageScrollPane, BorderLayout.CENTER);
-        previewContainer.add(multiPreviewPanel, BorderLayout.SOUTH);
-        previewContainer.setBorder(new TitledBorder("プレビュー"));
+        JPanel imageContainer = new JPanel(new BorderLayout());
+        imageContainer.add(imageScrollPane, BorderLayout.CENTER);
+        imageContainer.add(multiPreviewPanel, BorderLayout.SOUTH);
 
         messageArea.setLineWrap(true);
         messageArea.setWrapStyleWord(true);
+        messageArea.setRows(3);
         JScrollPane messageScroll = new JScrollPane(messageArea);
-        messageScroll.setBorder(new TitledBorder("投稿文"));
+        messageScroll.setPreferredSize(new Dimension(480, 72));
 
-        add(previewContainer, BorderLayout.CENTER);
-        add(messageScroll, BorderLayout.SOUTH);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, imageContainer, messageScroll);
+        splitPane.setResizeWeight(0.82);
+        splitPane.setContinuousLayout(true);
+        add(splitPane, BorderLayout.CENTER);
     }
 
     public void showEntries(List<ScreenshotEntry> entries, String message) {
@@ -69,9 +70,7 @@ public class PreviewPanel extends JPanel {
             imageScrollPane.setVisible(false);
             multiPreviewPanel.setVisible(true);
             for (ScreenshotEntry entry : entries) {
-                JLabel thumb = new JLabel(loadScaledImage(entry, 240, 135));
-                thumb.setToolTipText(entry.getFileName());
-                multiPreviewPanel.add(thumb);
+                multiPreviewPanel.add(new JLabel(loadScaledImage(entry, 240, 135)));
             }
         }
 

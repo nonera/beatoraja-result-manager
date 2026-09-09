@@ -314,6 +314,35 @@ public class DifficultyTableRegistry {
     }
 
     /**
+     * All distinct raw symbols across loaded difficulty tables, ordered by configured
+     * table priority then folder appearance order within each table.
+     */
+    public List<String> getSymbolsInPriorityOrder() {
+        List<String> tagsInOrder = new ArrayList<>();
+        for (String tag : tablePriority) {
+            if (notationsByTagAndSymbol.containsKey(tag) && !tagsInOrder.contains(tag)) {
+                tagsInOrder.add(tag);
+            }
+        }
+        for (String tag : notationsByTagAndSymbol.keySet()) {
+            if (!tagsInOrder.contains(tag)) {
+                tagsInOrder.add(tag);
+            }
+        }
+
+        List<String> result = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String tag : tagsInOrder) {
+            for (String symbol : getSymbolsForTag(tag)) {
+                if (seen.add(symbol)) {
+                    result.add(symbol);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * All distinct notations (e.g. "A1".."A9") registered under the given table
      * for one specific raw symbol, in the order their folders appear. Used to let
      * the user see what a symbol rename will actually affect.

@@ -25,7 +25,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JSplitPane;
-import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
@@ -47,7 +46,6 @@ public class MainFrame extends JFrame {
     private ScreenshotDatabase screenshotDatabase;
     private final ChartResolverService chartResolverService = new ChartResolverService();
 
-    private final ScreenshotListPanel listPanel = new ScreenshotListPanel();
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
     private final JLabel statusLabel = new JLabel("準備中...");
@@ -66,9 +64,11 @@ public class MainFrame extends JFrame {
         reloadTableRegistry();
         buildUi();
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
+        databasePanel.setSelectionListener(this::onSelectionChanged);
+        databasePanel.setPostedStateStore(postedStateStore);
+        syncSymbolPriorityOrder();
         reloadDiscordWebhooks();
-        listPanel.setPostedStateStore(postedStateStore);
-        listPanel.setSelectionListener(this::onSelectionChanged);
+        reloadDatabaseQuietly();
         refreshScreenshots();
         startWatcher();
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -108,10 +108,7 @@ public class MainFrame extends JFrame {
         menuBar.add(settingsMenu);
         setJMenuBar(menuBar);
 
-        JPanel galleryPanel = new JPanel(new BorderLayout());
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listPanel, previewPanel);
-        splitPane.setResizeWeight(0.35);
-        galleryPanel.add(splitPane, BorderLayout.CENTER);
+        JPanel mainPanel = new JPanel(new BorderLayout());
 
         JPanel actionPanel = new JPanel(new BorderLayout(8, 8));
         actionPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -127,12 +124,12 @@ public class MainFrame extends JFrame {
         buttons.add(twitterButton);
         buttons.add(discordButton);
         actionPanel.add(buttons, BorderLayout.EAST);
-        galleryPanel.add(actionPanel, BorderLayout.NORTH);
+        mainPanel.add(actionPanel, BorderLayout.NORTH);
 
-        JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.addTab("ギャラリー", galleryPanel);
-        tabbedPane.addTab("データベース", databasePanel);
-        add(tabbedPane, BorderLayout.CENTER);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, databasePanel, previewPanel);
+        splitPane.setResizeWeight(0.55);
+        mainPanel.add(splitPane, BorderLayout.CENTER);
+        add(mainPanel, BorderLayout.CENTER);
 
         indexProgressBar.setStringPainted(true);
         indexProgressBar.setPreferredSize(new Dimension(220, indexProgressBar.getPreferredSize().height));
@@ -145,6 +142,17 @@ public class MainFrame extends JFrame {
         add(statusPanel, BorderLayout.SOUTH);
 
         updateActionButtons(0);
+    }
+
+    private void reloadDatabaseQuietly() {
+        if (screenshotDatabase == null) {
+            return;
+        }
+        try {
+            databasePanel.reload(screenshotDatabase);
+        } catch (SQLException e) {
+            statusLabel.setText("DB 読み込み失敗: " + e.getMessage());
+        }
     }
 
     private void reloadDiscordWebhooks() {
@@ -160,9 +168,14 @@ public class MainFrame extends JFrame {
     private void reloadTableRegistry() {
         try {
             chartResolverService.reload(config);
+            syncSymbolPriorityOrder();
         } catch (IOException e) {
             statusLabel.setText("難易度表・プレイログの読み込みに失敗: " + e.getMessage());
         }
+    }
+
+    private void syncSymbolPriorityOrder() {
+        databasePanel.setSymbolPriorityOrder(chartResolverService.getSymbolsInPriorityOrder());
     }
 
     private void onSelectionChanged(List<ScreenshotEntry> selectedEntries) {
@@ -176,7 +189,7 @@ public class MainFrame extends JFrame {
     }
 
     private void refreshSelectedTweetText() {
-        onSelectionChanged(listPanel.getSelectedEntries());
+        onSelectionChanged(databasePanel.getSelectedEntries());
     }
 
     private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
@@ -221,7 +234,6 @@ public class MainFrame extends JFrame {
         try {
             reloadTableRegistry();
             List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir);
-            listPanel.setEntries(entries);
             statusLabel.setText(entries.size() + " 件のスクショを読み込みました");
             startIndexing(entries);
         } catch (IOException e) {
@@ -308,9 +320,8 @@ public class MainFrame extends JFrame {
         screenshotWatcher = new ScreenshotWatcher();
         try {
             screenshotWatcher.start(screenshotDir, entry -> SwingUtilities.invokeLater(() -> {
-                listPanel.addEntry(entry);
                 syncDatabaseEntry(entry);
-                statusLabel.setText("新しいスクショを検出: " + entry.getFileName());
+                statusLabel.setText("新しいスクショを検出しました");
             }));
         } catch (IOException e) {
             statusLabel.setText("フォルダ監視を開始できませんでした");
@@ -318,7 +329,7 @@ public class MainFrame extends JFrame {
     }
 
     private void postToTwitter() {
-        List<ScreenshotEntry> selected = listPanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
         if (selected.isEmpty()) {
             return;
         }
@@ -359,7 +370,7 @@ public class MainFrame extends JFrame {
                         postedStateStore.markTwitterPosted(entry.getFileName(), result.tweetId());
                     }
                     savePostedStateQuietly();
-                    listPanel.setPostedStateStore(postedStateStore);
+                    databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Twitter 投稿完了");
                     JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
@@ -384,7 +395,7 @@ public class MainFrame extends JFrame {
     }
 
     private void postToDiscord() {
-        List<ScreenshotEntry> selected = listPanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
         if (selected.isEmpty()) {
             return;
         }
@@ -415,7 +426,7 @@ public class MainFrame extends JFrame {
                         postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
                     }
                     savePostedStateQuietly();
-                    listPanel.setPostedStateStore(postedStateStore);
+                    databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Discord 送信完了");
                     JOptionPane.showMessageDialog(this, "Discord に送信しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
@@ -434,8 +445,8 @@ public class MainFrame extends JFrame {
     }
 
     private void setPostingEnabled(boolean enabled) {
-        twitterButton.setEnabled(enabled && listPanel.getSelectedCount() >= 1 && listPanel.getSelectedCount() <= 4);
-        discordButton.setEnabled(enabled && listPanel.getSelectedCount() >= 1 && listPanel.getSelectedCount() <= 10
+        twitterButton.setEnabled(enabled && databasePanel.getSelectedCount() >= 1 && databasePanel.getSelectedCount() <= 4);
+        discordButton.setEnabled(enabled && databasePanel.getSelectedCount() >= 1 && databasePanel.getSelectedCount() <= 10
                 && discordWebhookCombo.getItemCount() > 0);
     }
 
