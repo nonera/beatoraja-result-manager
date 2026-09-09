@@ -1,6 +1,6 @@
 package com.beatoraja.screenshot.service.twitter;
 
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.util.AppPaths;
 import com.beatoraja.screenshot.util.ProcessUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,7 +20,7 @@ import java.util.Map;
  * request that reaches X is a genuine, human-initiated action rather than a
  * fully scripted one.
  *
- * Used as a fallback when the GraphQL-based {@link TwitterCliService} hits
+ * Used as a fallback when the GraphQL-based {@link ClixService} hits
  * account-level posting limits (e.g. error 344) that manual browser posting
  * is not subject to. A fully automated version of this flow (auto-clicking
  * Post too) was tried first and got blocked by X's automation detection
@@ -42,10 +42,10 @@ public class TwitterBrowserPostService {
 
     private Process browserProcess;
 
-    public TwitterCliService.PostResult post(String text, List<Path> imagePaths) {
+    public ClixService.PostResult post(String text, List<Path> imagePaths) {
         Path browser = ChromiumBrowserLocator.locate().orElse(null);
         if (browser == null) {
-            return TwitterCliService.PostResult.failed("Chrome または Edge が見つかりません。");
+            return ClixService.PostResult.failed("Chrome または Edge が見つかりません。");
         }
 
         Path profileDir = AppPaths.twitterChromeProfileDir();
@@ -73,7 +73,7 @@ public class TwitterBrowserPostService {
             int debugPort = ChromiumDevToolsClient.waitForDebugPort(profileDir, STARTUP_TIMEOUT);
             return runComposeFlow(debugPort, text, imagePaths);
         } catch (Exception e) {
-            return TwitterCliService.PostResult.failed("ブラウザ投稿に失敗しました: " + e.getMessage());
+            return ClixService.PostResult.failed("ブラウザ投稿に失敗しました: " + e.getMessage());
         } finally {
             stopBrowser();
             try {
@@ -83,14 +83,14 @@ public class TwitterBrowserPostService {
         }
     }
 
-    private TwitterCliService.PostResult runComposeFlow(int debugPort, String text, List<Path> imagePaths) throws Exception {
+    private ClixService.PostResult runComposeFlow(int debugPort, String text, List<Path> imagePaths) throws Exception {
         ChromiumDevToolsClient devTools = new ChromiumDevToolsClient(debugPort);
         try (ChromiumCdpSession session = devTools.openSession("about:blank")) {
             session.send("Page.navigate", Map.of("url", COMPOSE_URL), COMMAND_TIMEOUT);
 
             if (!waitUntil(session, COMPOSE_LOAD_TIMEOUT,
                     "!!document.querySelector('" + TEXTAREA_SELECTOR + "')")) {
-                return TwitterCliService.PostResult.failed(
+                return ClixService.PostResult.failed(
                         "投稿画面を開けませんでした。Twitter に再ログインが必要な可能性があります。");
             }
 
@@ -98,18 +98,18 @@ public class TwitterBrowserPostService {
                     "(function(){var el=document.querySelector('" + TEXTAREA_SELECTOR + "');"
                             + "if(el){el.focus();return true;}return false;})()");
             if (!focused) {
-                return TwitterCliService.PostResult.failed("投稿本文の入力欄を操作できませんでした。");
+                return ClixService.PostResult.failed("投稿本文の入力欄を操作できませんでした。");
             }
             session.send("Input.insertText", Map.of("text", text == null ? "" : text), COMMAND_TIMEOUT);
 
             if (imagePaths != null && !imagePaths.isEmpty()) {
                 if (!attachImages(session, imagePaths)) {
-                    return TwitterCliService.PostResult.failed("画像の添付に失敗しました。");
+                    return ClixService.PostResult.failed("画像の添付に失敗しました。");
                 }
                 if (!waitUntil(session, UPLOAD_TIMEOUT,
                         "(function(){var b=document.querySelector('" + POST_BUTTON_SELECTOR + "');"
                                 + "return !!b && b.getAttribute('aria-disabled')!=='true';})()")) {
-                    return TwitterCliService.PostResult.failed("画像のアップロード完了を確認できませんでした。");
+                    return ClixService.PostResult.failed("画像のアップロード完了を確認できませんでした。");
                 }
             }
 
@@ -124,7 +124,7 @@ public class TwitterBrowserPostService {
      * and clicks Post themselves. We just watch for that to happen (or for
      * the window to be closed, meaning the user cancelled).
      */
-    private TwitterCliService.PostResult waitForManualPost(ChromiumCdpSession session) throws Exception {
+    private ClixService.PostResult waitForManualPost(ChromiumCdpSession session) throws Exception {
         String confirmExpression =
                 "(function(){var el=document.querySelector('" + TEXTAREA_SELECTOR + "');"
                         + "var toast=document.querySelector('[data-testid=\"toast\"]');"
@@ -133,17 +133,17 @@ public class TwitterBrowserPostService {
         long deadline = System.currentTimeMillis() + MANUAL_POST_TIMEOUT.toMillis();
         while (System.currentTimeMillis() < deadline) {
             if (browserProcess == null || !browserProcess.isAlive()) {
-                return TwitterCliService.PostResult.failed("ブラウザが閉じられたため投稿をキャンセルしました。");
+                return ClixService.PostResult.failed("ブラウザが閉じられたため投稿をキャンセルしました。");
             }
             if (evaluateBoolean(session, confirmExpression)) {
                 // Give the in-flight request a moment to actually complete before we
                 // close the browser out from under it.
                 Thread.sleep(1500);
-                return TwitterCliService.PostResult.ok("", "投稿完了（ブラウザで手動投稿）");
+                return ClixService.PostResult.ok("", "投稿完了（ブラウザで手動投稿）");
             }
             Thread.sleep(POLL_INTERVAL.toMillis());
         }
-        return TwitterCliService.PostResult.failed(
+        return ClixService.PostResult.failed(
                 "投稿の完了を確認できませんでした（" + MANUAL_POST_TIMEOUT.toMinutes() + "分待機）。"
                         + "ブラウザで「投稿」を押したか確認してください。");
     }

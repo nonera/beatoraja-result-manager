@@ -1,7 +1,7 @@
 package com.beatoraja.screenshot.service.twitter;
 
 import com.beatoraja.screenshot.config.AppConfig;
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 
 import java.io.IOException;
 
@@ -18,14 +18,14 @@ public class TwitterAuthService {
         return config.hasManualTwitterAuth();
     }
 
-    public TwitterCliService.AuthResult verifyStoredSession() {
+    public ClixService.AuthResult verifyStoredSession() {
         if (!hasStoredSession()) {
-            return TwitterCliService.AuthResult.failed("Twitter に未ログインです");
+            return ClixService.AuthResult.failed("Twitter に未ログインです");
         }
-        return new TwitterCliService(config).checkAuth();
+        return new ClixService(config).checkAuth();
     }
 
-    public TwitterCliService.AuthResult loginInteractive(LoginProgressListener listener) {
+    public ClixService.AuthResult loginInteractive(LoginProgressListener listener) {
         try {
             if (listener != null) {
                 listener.onStatus("Chrome / Edge を起動しています...");
@@ -59,7 +59,7 @@ public class TwitterAuthService {
                 listener.onStatus("認証を確認しています...");
             }
 
-            TwitterCliService.AuthResult result = new TwitterCliService(config).checkAuth();
+            ClixService.AuthResult result = new ClixService(config).checkAuth();
             if (result.success()) {
                 if (listener != null) {
                     listener.onStatus("ログイン完了");
@@ -67,21 +67,21 @@ public class TwitterAuthService {
                 return result;
             }
             clearStoredSession();
-            return TwitterCliService.AuthResult.failed(
+            return ClixService.AuthResult.failed(
                     "Cookie は取得できましたが Twitter 認証に失敗しました: " + result.message());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return TwitterCliService.AuthResult.failed(e.getMessage());
+            return ClixService.AuthResult.failed(e.getMessage());
         } finally {
             chromeLoginService.stopBrowser();
         }
     }
 
-    public TwitterCliService.AuthResult ensureAuthenticated(LoginProgressListener listener) {
+    public ClixService.AuthResult ensureAuthenticated(LoginProgressListener listener) {
         if (hasStoredSession()) {
-            TwitterCliService.AuthResult verified = verifyStoredSession();
+            ClixService.AuthResult verified = verifyStoredSession();
             if (verified.success()) {
                 return verified;
             }
@@ -97,7 +97,7 @@ public class TwitterAuthService {
         }
 
         if (listener == null) {
-            return TwitterCliService.AuthResult.failed(
+            return ClixService.AuthResult.failed(
                     "Twitter にログインしてください。設定画面から「Twitter にログイン」を実行してください。");
         }
         return loginInteractive(listener);
@@ -113,8 +113,7 @@ public class TwitterAuthService {
     }
 
     public void saveCookies(TwitterCookies cookies) {
-        config.setTwitterAuthToken(cookies.authToken());
-        config.setTwitterCt0(cookies.ct0());
+        config.setTwitterCookies(cookies.toMutableMap());
         try {
             config.save();
         } catch (IOException ignored) {
@@ -122,8 +121,7 @@ public class TwitterAuthService {
     }
 
     public void clearStoredSession() {
-        config.setTwitterAuthToken("");
-        config.setTwitterCt0("");
+        config.clearTwitterAuth();
         try {
             config.save();
         } catch (IOException ignored) {

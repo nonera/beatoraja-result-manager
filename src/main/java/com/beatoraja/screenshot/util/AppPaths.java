@@ -29,8 +29,12 @@ public final class AppPaths {
         return EXE_DIR;
     }
 
-    public static Path bundledTwitterExe() {
-        return EXE_DIR.resolve("tools").resolve("twitter.exe");
+    public static Path bundledClixExe() {
+        return EXE_DIR.resolve("tools").resolve("clix.exe");
+    }
+
+    public static Path clixHomeDir() {
+        return APP_DATA.resolve("clix-home");
     }
 
     public static Path twitterChromeProfileDir() {

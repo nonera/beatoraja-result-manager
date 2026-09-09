@@ -1,6 +1,6 @@
 # beatoraja Screenshot Manager
 
-beatoraja の F6 スクショを一覧表示し、Twitter（twitter-cli 経由）と Discord（Webhook）へ投稿する Windows 向けデスクトップアプリです。
+beatoraja の F6 スクショを一覧表示し、Twitter（[clix](https://github.com/spideystreet/clix) 経由）と Discord（Webhook）へ投稿する Windows 向けデスクトップアプリです。
 
 ## 利用者向け（exe だけ使う場合）
 
@@ -13,7 +13,7 @@ beatoraja の F6 スクショを一覧表示し、Twitter（twitter-cli 経由�
 
 **Twitter 認証について:**
 
-Windows では twitter-cli 単体の Cookie 自動取得（Chrome 127+）が動かないため、このアプリは **Chrome DevTools Protocol** で Cookie を取得します。利用者が DevTools を触る必要はありません。
+Windows では clix 単体の Cookie 自動取得（Chrome 127+）が動かないため、このアプリは **Chrome DevTools Protocol** で X 向け Cookie をすべて取得します。利用者が DevTools を触る必要はありません。
 
 1. 「Twitter にログイン」を押す
 2. 通常の Chrome / Edge が起動（自動操作モードではない）
@@ -63,13 +63,13 @@ git submodule update --init --recursive
 ./gradlew run
 ```
 
-Twitter 投稿には **twitter-cli** が必要です。初回のみ以下を実行してください:
+Twitter 投稿には **clix** が必要です。初回のみ以下を実行してください:
 
 ```powershell
-./scripts/build-twitter-cli.ps1
+./scripts/build-clix.ps1
 ```
 
-`tools/twitter.exe` が生成されます。Python がある環境では `pip install twitter-cli` でも可（PATH に `twitter` が通っている場合）。
+`tools/clix.exe` が生成されます。Python 3.11+ がある環境では `pip install clix0` でも可（PATH に `clix` が通っている場合）。
 
 ### リリース zip 生成
 
@@ -78,10 +78,10 @@ Twitter 投稿には **twitter-cli** が必要です。初回のみ以下を実�
 ```
 
 - Java アプリを `jpackage` で exe 化（JRE 同梱）
-- Python がある場合、`twitter-cli` を PyInstaller で `tools/twitter.exe` に同梱
+- Python 3.11+ がある場合、`clix0` を PyInstaller で `tools/clix.exe` に同梱
 - 出力: `dist/beatoraja-screenshot-manager.zip`
 
-Python がない環境では `tools/twitter.exe` を手動配置してください。
+Python がない環境では `tools/clix.exe` を手動配置してください。
 
 ## beatoraja 連携
 
@@ -105,6 +105,6 @@ BeMusicSeeker Unofficial Fork のドキュメントはリポジトリ内サブ�
 
 ## 注意事項
 
-- Twitter 投稿は非公式の twitter-cli 経由です。X 側の仕様変更で動かなくなる可能性があります
+- Twitter 投稿は非公式の clix 経由です。X 側の仕様変更で動かなくなる可能性があります
 - Discord Webhook URL は秘密情報です。他人に共有しないでください
 - 自動投稿の多用はアカウント制限の原因になる場合があります

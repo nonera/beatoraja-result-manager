@@ -32,6 +32,7 @@ public class AppConfig {
     private String twitterChromeProfile = "";
     private String twitterAuthToken = "";
     private String twitterCt0 = "";
+    private Map<String, String> twitterCookies = new LinkedHashMap<>();
 
     public static AppConfig load() {
         Path configFile = AppPaths.configFile();
@@ -39,7 +40,9 @@ public class AppConfig {
             return new AppConfig();
         }
         try {
-            return MAPPER.readValue(configFile.toFile(), AppConfig.class);
+            AppConfig config = MAPPER.readValue(configFile.toFile(), AppConfig.class);
+            config.normalizeTwitterCookies();
+            return config;
         } catch (IOException e) {
             return new AppConfig();
         }
@@ -134,24 +137,76 @@ public class AppConfig {
         this.twitterChromeProfile = twitterChromeProfile == null ? "" : twitterChromeProfile;
     }
 
+    public Map<String, String> getTwitterCookies() {
+        return twitterCookies;
+    }
+
+    public void setTwitterCookies(Map<String, String> twitterCookies) {
+        this.twitterCookies = twitterCookies == null ? new LinkedHashMap<>() : new LinkedHashMap<>(twitterCookies);
+        this.twitterAuthToken = "";
+        this.twitterCt0 = "";
+    }
+
     public String getTwitterAuthToken() {
+        String fromMap = twitterCookies.get("auth_token");
+        if (fromMap != null && !fromMap.isBlank()) {
+            return fromMap;
+        }
         return twitterAuthToken;
     }
 
     public void setTwitterAuthToken(String twitterAuthToken) {
-        this.twitterAuthToken = twitterAuthToken == null ? "" : twitterAuthToken;
+        String value = twitterAuthToken == null ? "" : twitterAuthToken;
+        if (value.isBlank()) {
+            twitterCookies.remove("auth_token");
+        } else {
+            twitterCookies.put("auth_token", value);
+        }
+        this.twitterAuthToken = "";
     }
 
     public String getTwitterCt0() {
+        String fromMap = twitterCookies.get("ct0");
+        if (fromMap != null && !fromMap.isBlank()) {
+            return fromMap;
+        }
         return twitterCt0;
     }
 
     public void setTwitterCt0(String twitterCt0) {
-        this.twitterCt0 = twitterCt0 == null ? "" : twitterCt0;
+        String value = twitterCt0 == null ? "" : twitterCt0;
+        if (value.isBlank()) {
+            twitterCookies.remove("ct0");
+        } else {
+            twitterCookies.put("ct0", value);
+        }
+        this.twitterCt0 = "";
     }
 
     public boolean hasManualTwitterAuth() {
-        return !twitterAuthToken.isBlank() && !twitterCt0.isBlank();
+        return !getTwitterAuthToken().isBlank() && !getTwitterCt0().isBlank();
+    }
+
+    public void clearTwitterAuth() {
+        twitterCookies.clear();
+        twitterAuthToken = "";
+        twitterCt0 = "";
+    }
+
+    private void normalizeTwitterCookies() {
+        if (twitterCookies == null) {
+            twitterCookies = new LinkedHashMap<>();
+        }
+        if (twitterCookies.isEmpty()) {
+            if (twitterAuthToken != null && !twitterAuthToken.isBlank()) {
+                twitterCookies.put("auth_token", twitterAuthToken);
+            }
+            if (twitterCt0 != null && !twitterCt0.isBlank()) {
+                twitterCookies.put("ct0", twitterCt0);
+            }
+        }
+        twitterAuthToken = "";
+        twitterCt0 = "";
     }
 
     public static class DiscordWebhookEntry {

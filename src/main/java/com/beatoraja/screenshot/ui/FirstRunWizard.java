@@ -1,7 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
 import javax.swing.JButton;
@@ -127,7 +127,7 @@ public class FirstRunWizard extends JPanel {
     private void loginTwitter() {
         java.awt.Window owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         TwitterLoginDialog dialog = new TwitterLoginDialog(owner, config);
-        TwitterCliService.AuthResult result = dialog.showAndLogin();
+        ClixService.AuthResult result = dialog.showAndLogin();
         twitterStatusLabel.setText(result.success() ? "ログイン済み" : result.message());
     }
 

@@ -46,16 +46,16 @@ if (-not (Test-Path $appImageDir)) {
 }
 New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 
-Write-Host "==> Building bundled twitter.exe (optional, requires Python + twitter-cli)"
-$buildTwitterScript = Join-Path $ProjectRoot "scripts\build-twitter-cli.ps1"
-$twitterExe = Join-Path $appImageDir "tools\twitter.exe"
+Write-Host "==> Building bundled clix.exe (optional, requires Python 3.11+ + clix0)"
+$buildClixScript = Join-Path $ProjectRoot "scripts\build-clix.ps1"
+$clixExe = Join-Path $appImageDir "tools\clix.exe"
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    & $buildTwitterScript -ProjectRoot $ProjectRoot
-    Copy-Item (Join-Path $ProjectRoot "tools\twitter.exe") $twitterExe -Force
-    Write-Host "twitter.exe bundled"
+    & $buildClixScript -ProjectRoot $ProjectRoot
+    Copy-Item (Join-Path $ProjectRoot "tools\clix.exe") $clixExe -Force
+    Write-Host "clix.exe bundled"
 } else {
-    Write-Warning "Python not found. Skipping twitter.exe bundling."
-    Write-Warning "Run scripts\\build-twitter-cli.ps1 later, or place twitter.exe into dist/beatoraja-screenshot-manager/tools/"
+    Write-Warning "Python not found. Skipping clix.exe bundling."
+    Write-Warning "Run scripts\\build-clix.ps1 later, or place clix.exe into dist/beatoraja-screenshot-manager/tools/"
 }
 
 $zipPath = Join-Path $ProjectRoot "dist\beatoraja-screenshot-manager.zip"

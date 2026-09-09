@@ -10,9 +10,9 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-public final class TwitterCliLocator {
+public final class ClixLocator {
 
-    private TwitterCliLocator() {
+    private ClixLocator() {
     }
 
     public static Optional<Path> locate() {
@@ -21,21 +21,21 @@ public final class TwitterCliLocator {
                 return Optional.of(candidate.toAbsolutePath().normalize());
             }
         }
-        return findOnSystemPath("twitter.exe").or(() -> findOnSystemPath("twitter"));
+        return findOnSystemPath("clix.exe").or(() -> findOnSystemPath("clix"));
     }
 
     public static Path expectedBundledPath() {
-        return AppPaths.bundledTwitterExe().toAbsolutePath().normalize();
+        return AppPaths.bundledClixExe().toAbsolutePath().normalize();
     }
 
     private static List<Path> candidates() {
         List<Path> paths = new ArrayList<>();
-        paths.add(AppPaths.bundledTwitterExe());
-        paths.add(Paths.get(System.getProperty("user.dir")).resolve("tools").resolve("twitter.exe"));
+        paths.add(AppPaths.bundledClixExe());
+        paths.add(Paths.get(System.getProperty("user.dir")).resolve("tools").resolve("clix.exe"));
 
         Path projectRoot = findProjectRoot();
         if (projectRoot != null) {
-            paths.add(projectRoot.resolve("tools").resolve("twitter.exe"));
+            paths.add(projectRoot.resolve("tools").resolve("clix.exe"));
         }
 
         String localAppData = System.getenv("LOCALAPPDATA");
@@ -44,7 +44,7 @@ public final class TwitterCliLocator {
             if (Files.isDirectory(pythonRoot)) {
                 try (Stream<Path> versions = Files.list(pythonRoot)) {
                     versions.filter(Files::isDirectory)
-                            .map(dir -> dir.resolve("Scripts").resolve("twitter.exe"))
+                            .map(dir -> dir.resolve("Scripts").resolve("clix.exe"))
                             .forEach(paths::add);
                 } catch (Exception ignored) {
                 }
@@ -53,7 +53,7 @@ public final class TwitterCliLocator {
             if (Files.isDirectory(localPython)) {
                 try (Stream<Path> versions = Files.list(localPython)) {
                     versions.filter(Files::isDirectory)
-                            .map(dir -> dir.resolve("Scripts").resolve("twitter.exe"))
+                            .map(dir -> dir.resolve("Scripts").resolve("clix.exe"))
                             .forEach(paths::add);
                 } catch (Exception ignored) {
                 }
@@ -62,7 +62,7 @@ public final class TwitterCliLocator {
 
         String appData = System.getenv("APPDATA");
         if (appData != null && !appData.isBlank()) {
-            paths.add(Path.of(appData, "Python", "Scripts", "twitter.exe"));
+            paths.add(Path.of(appData, "Python", "Scripts", "clix.exe"));
         }
 
         return paths;

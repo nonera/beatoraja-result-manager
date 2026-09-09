@@ -1,9 +1,10 @@
 package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.service.twitter.ClixAuthSupport;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.twitter.TwitterBrowserPostService;
-import com.beatoraja.screenshot.util.TwitterCliLocator;
+import com.beatoraja.screenshot.util.ClixLocator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -15,27 +16,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class TwitterCliService {
+public class ClixService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final AppConfig config;
 
-    public TwitterCliService(AppConfig config) {
+    public ClixService(AppConfig config) {
         this.config = config;
     }
 
     public AuthResult checkAuth() {
-        Path twitterCommand = resolveTwitterCommand();
-        if (twitterCommand == null) {
+        if (resolveClixCommand() == null) {
             return AuthResult.failed(buildMissingCliMessage());
         }
         if (!config.hasManualTwitterAuth()) {
             return AuthResult.failed("Twitter に未ログインです。「Twitter にログイン」を実行してください。");
         }
 
-        CommandResult result = run(List.of("feed", "--max", "1", "--json"), true);
-        if (result.exitCode() == 0) {
+        CommandResult result = run(List.of("auth", "status", "--json"), false);
+        if (result.exitCode() == 0 && isAuthenticated(result.output())) {
             return AuthResult.ok("Twitter 認証 OK");
         }
         return AuthResult.failed(formatFailureMessage(result));
@@ -48,7 +48,7 @@ public class TwitterCliService {
         if (imagePaths.size() > 4) {
             return PostResult.failed("Twitter は最大4枚まで投稿できます。");
         }
-        if (resolveTwitterCommand() == null) {
+        if (resolveClixCommand() == null) {
             return PostResult.failed(buildMissingCliMessage());
         }
         if (!config.hasManualTwitterAuth()) {
@@ -97,19 +97,36 @@ public class TwitterCliService {
 
     private boolean shouldRetryAfterRefresh(CommandResult result) {
         String output = result.output() == null ? "" : result.output();
-        return output.contains("not_authenticated")
+        return output.contains("Not authenticated")
+                || output.contains("No Twitter/X credentials")
+                || output.contains("not_authenticated")
                 || output.contains("401")
                 || result.exitCode() == 2;
+    }
+
+    private boolean isAuthenticated(String output) {
+        try {
+            JsonNode root = MAPPER.readTree(output);
+            return root.path("authenticated").asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private String extractTweetId(String output) {
         try {
             JsonNode root = MAPPER.readTree(output);
+            String restId = root.path("data")
+                    .path("create_tweet")
+                    .path("tweet_results")
+                    .path("result")
+                    .path("rest_id")
+                    .asText("");
+            if (!restId.isBlank()) {
+                return restId;
+            }
             if (root.has("id")) {
                 return root.get("id").asText();
-            }
-            if (root.has("data") && root.get("data").has("id")) {
-                return root.get("data").get("id").asText();
             }
         } catch (Exception ignored) {
         }
@@ -117,24 +134,25 @@ public class TwitterCliService {
     }
 
     private CommandResult run(List<String> args, boolean verbose) {
-        Path twitterExe = resolveTwitterCommand();
-        if (twitterExe == null) {
+        Path clixExe = resolveClixCommand();
+        if (clixExe == null) {
             return new CommandResult(2, buildMissingCliMessage());
         }
         List<String> command = new ArrayList<>();
-        command.add(twitterExe.toString());
-        if (verbose) {
-            command.add("-v");
-        }
+        command.add(clixExe.toString());
         command.addAll(args);
 
         Path outputFile = null;
         try {
-            outputFile = Files.createTempFile("twitter-cli-", ".out");
+            outputFile = Files.createTempFile("clix-", ".out");
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.redirectErrorStream(true);
             builder.redirectOutput(outputFile.toFile());
-            applyEnvironment(builder.environment());
+            try {
+                applyEnvironment(builder.environment());
+            } catch (IOException e) {
+                return new CommandResult(1, "clix 認証ファイルの作成に失敗しました: " + e.getMessage());
+            }
 
             Process process = builder.start();
             int exitCode = process.waitFor();
@@ -157,11 +175,8 @@ public class TwitterCliService {
         }
     }
 
-    private void applyEnvironment(Map<String, String> env) {
-        if (config.hasManualTwitterAuth()) {
-            env.put("TWITTER_AUTH_TOKEN", config.getTwitterAuthToken().trim());
-            env.put("TWITTER_CT0", config.getTwitterCt0().trim());
-        }
+    private void applyEnvironment(Map<String, String> env) throws IOException {
+        ClixAuthSupport.applyAuthEnvironment(config, env);
     }
 
     private String formatFailureMessage(CommandResult result) {
@@ -172,18 +187,26 @@ public class TwitterCliService {
 
         try {
             JsonNode root = MAPPER.readTree(output);
-            String code = root.path("code").asText("");
+            if (root.has("authenticated") && !root.path("authenticated").asBoolean(true)) {
+                return buildAuthFailureMessage();
+            }
+            JsonNode errors = root.path("errors");
+            if (errors.isArray() && !errors.isEmpty()) {
+                String message = errors.get(0).path("message").asText("");
+                if (!message.isBlank()) {
+                    return enrichMessage(message, "", result.exitCode());
+                }
+            }
             String message = root.path("message").asText("");
             if (!message.isBlank()) {
-                return enrichMessage(message, code, result.exitCode());
-            }
-            if (!code.isBlank()) {
-                return enrichMessage(code, code, result.exitCode());
+                return enrichMessage(message, root.path("code").asText(""), result.exitCode());
             }
         } catch (Exception ignored) {
         }
 
-        if (output.contains("not_authenticated")) {
+        if (output.contains("Not authenticated")
+                || output.contains("No Twitter/X credentials")
+                || output.contains("not_authenticated")) {
             return buildAuthFailureMessage();
         }
 
@@ -191,7 +214,10 @@ public class TwitterCliService {
     }
 
     private String enrichMessage(String message, String code, int exitCode) {
-        if ("not_authenticated".equalsIgnoreCase(code) || message.contains("not_authenticated")) {
+        if ("not_authenticated".equalsIgnoreCase(code)
+                || message.contains("Not authenticated")
+                || message.contains("No Twitter/X credentials")
+                || message.contains("not_authenticated")) {
             return buildAuthFailureMessage();
         }
         if (exitCode != 0) {
@@ -204,7 +230,10 @@ public class TwitterCliService {
         if (exitCode == 2) {
             return buildAuthFailureMessage();
         }
-        return "twitter-cli が失敗しました (exit code: " + exitCode + ")";
+        if (exitCode == 3) {
+            return "X のレート制限に達しました。しばらく待ってから再試行してください。";
+        }
+        return "clix が失敗しました (exit code: " + exitCode + ")";
     }
 
     private String buildAuthFailureMessage() {
@@ -212,27 +241,27 @@ public class TwitterCliService {
                 Twitter 認証に失敗しました。
 
                 設定画面の「Twitter にログイン」を再度実行してください。
-                セッションの有効期限切れの可能性があります。
+                セッションの有效期限切れの可能性があります。
                 """;
     }
 
     private String buildMissingCliMessage() {
-        Path bundled = TwitterCliLocator.expectedBundledPath();
-        Path projectTools = java.nio.file.Path.of(System.getProperty("user.dir")).resolve("tools").resolve("twitter.exe");
+        Path bundled = ClixLocator.expectedBundledPath();
+        Path projectTools = Path.of(System.getProperty("user.dir")).resolve("tools").resolve("clix.exe");
         return """
-                twitter-cli が見つかりません。
+                clix が見つかりません。
 
                 次のいずれかを実行してください:
-                1. 開発中: .\\scripts\\build-twitter-cli.ps1
-                2. または: pip install twitter-cli （PATH に twitter コマンドが通る状態）
-                3. 配布版: tools\\twitter.exe を %s に配置
+                1. 開発中: .\\scripts\\build-clix.ps1
+                2. または: pip install clix0 （PATH に clix コマンドが通る状態）
+                3. 配布版: tools\\clix.exe を %s に配置
 
                 プロジェクト直下なら: %s
                 """.formatted(bundled, projectTools.toAbsolutePath());
     }
 
-    private Path resolveTwitterCommand() {
-        return TwitterCliLocator.locate().orElse(null);
+    private Path resolveClixCommand() {
+        return ClixLocator.locate().orElse(null);
     }
 
     public record AuthResult(boolean success, String message) {

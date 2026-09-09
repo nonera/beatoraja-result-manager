@@ -1,7 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
 import com.beatoraja.screenshot.player.BeatorajaPaths;
@@ -199,7 +199,7 @@ public class SettingsDialog extends JDialog {
             return;
         }
         new Thread(() -> {
-            TwitterCliService.AuthResult result = new TwitterAuthService(config).verifyStoredSession();
+            ClixService.AuthResult result = new TwitterAuthService(config).verifyStoredSession();
             javax.swing.SwingUtilities.invokeLater(() -> twitterStatusLabel.setText(result.message()));
         }, "twitter-auth-status").start();
     }
@@ -223,7 +223,7 @@ public class SettingsDialog extends JDialog {
 
     private void loginTwitter() {
         TwitterLoginDialog dialog = new TwitterLoginDialog(this, config);
-        TwitterCliService.AuthResult result = dialog.showAndLogin();
+        ClixService.AuthResult result = dialog.showAndLogin();
         twitterStatusLabel.setText(result.message());
     }
 
@@ -236,11 +236,11 @@ public class SettingsDialog extends JDialog {
         twitterStatusLabel.setText("確認中...");
         new Thread(() -> {
             TwitterAuthService authService = new TwitterAuthService(config);
-            TwitterCliService.AuthResult result = authService.verifyStoredSession();
+            ClixService.AuthResult result = authService.verifyStoredSession();
             if (!result.success() && authService.refreshSilently()) {
                 result = authService.verifyStoredSession();
             }
-            TwitterCliService.AuthResult finalResult = result;
+            ClixService.AuthResult finalResult = result;
             javax.swing.SwingUtilities.invokeLater(() ->
                     twitterStatusLabel.setText(finalResult.message()));
         }, "twitter-auth-check-settings").start();

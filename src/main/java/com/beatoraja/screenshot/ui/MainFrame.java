@@ -9,7 +9,7 @@ import com.beatoraja.screenshot.service.PostedStateStore;
 import com.beatoraja.screenshot.service.ScreenshotScanner;
 import com.beatoraja.screenshot.service.ScreenshotWatcher;
 import com.beatoraja.screenshot.service.TweetTextGenerator;
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.TableLookupService;
@@ -330,7 +330,7 @@ public class MainFrame extends JFrame {
         TwitterAuthService authService = new TwitterAuthService(config);
         if (!authService.hasStoredSession()) {
             TwitterLoginDialog loginDialog = new TwitterLoginDialog(this, config);
-            TwitterCliService.AuthResult loginResult = loginDialog.showAndLogin();
+            ClixService.AuthResult loginResult = loginDialog.showAndLogin();
             if (!loginResult.success()) {
                 JOptionPane.showMessageDialog(this, loginResult.message(), "Twitter ログイン", JOptionPane.WARNING_MESSAGE);
                 return;
@@ -345,13 +345,13 @@ public class MainFrame extends JFrame {
 
         new Thread(() -> {
             TwitterAuthService threadAuthService = new TwitterAuthService(config);
-            TwitterCliService.AuthResult verified = threadAuthService.verifyStoredSession();
+            ClixService.AuthResult verified = threadAuthService.verifyStoredSession();
             if (!verified.success()) {
                 threadAuthService.refreshSilently();
             }
 
-            TwitterCliService twitterCliService = new TwitterCliService(config);
-            TwitterCliService.PostResult result = twitterCliService.post(message, imagePaths);
+            ClixService clixService = new ClixService(config);
+            ClixService.PostResult result = clixService.post(message, imagePaths);
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
                 if (result.success()) {

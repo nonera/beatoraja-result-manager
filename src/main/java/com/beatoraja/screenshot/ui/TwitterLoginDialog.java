@@ -1,7 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
-import com.beatoraja.screenshot.service.TwitterCliService;
+import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
 import javax.swing.JButton;
@@ -25,7 +25,7 @@ public class TwitterLoginDialog extends JDialog {
     private final JButton completeButton = new JButton("ログイン完了");
     private final JButton cancelButton = new JButton("キャンセル");
     private final CountDownLatch loginLatch = new CountDownLatch(1);
-    private TwitterCliService.AuthResult result = TwitterCliService.AuthResult.failed("未実行");
+    private ClixService.AuthResult result = ClixService.AuthResult.failed("未実行");
 
     public TwitterLoginDialog(Window owner, AppConfig config) {
         super(owner, "Twitter ログイン", ModalityType.APPLICATION_MODAL);
@@ -68,7 +68,7 @@ public class TwitterLoginDialog extends JDialog {
         dispose();
     }
 
-    public TwitterCliService.AuthResult showAndLogin() {
+    public ClixService.AuthResult showAndLogin() {
         new Thread(this::runLogin, "twitter-login").start();
         setVisible(true);
         return result;

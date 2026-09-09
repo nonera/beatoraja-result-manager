@@ -96,6 +96,9 @@ public class ChromiumDevToolsClient implements AutoCloseable {
     private TwitterCookies parseCookies(JsonNode result) throws IOException {
         Map<String, String> values = new HashMap<>();
         for (JsonNode cookie : result.path("cookies")) {
+            if (!isTwitterDomain(cookie.path("domain").asText(""))) {
+                continue;
+            }
             values.putIfAbsent(cookie.path("name").asText(), cookie.path("value").asText());
         }
         String authToken = values.get("auth_token");
@@ -103,7 +106,18 @@ public class ChromiumDevToolsClient implements AutoCloseable {
         if ((authToken == null || authToken.isBlank()) && (ct0 == null || ct0.isBlank())) {
             throw new IOException("auth_token / ct0 が見つかりませんでした（ログイン状態が保存されていない可能性があります）");
         }
-        return new TwitterCookies(authToken, ct0);
+        return new TwitterCookies(values);
+    }
+
+    private static boolean isTwitterDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return false;
+        }
+        String normalized = domain.startsWith(".") ? domain.substring(1) : domain;
+        return normalized.equals("x.com")
+                || normalized.equals("twitter.com")
+                || normalized.endsWith(".x.com")
+                || normalized.endsWith(".twitter.com");
     }
 
     private String findOrCreatePage(String url) throws IOException, InterruptedException {
