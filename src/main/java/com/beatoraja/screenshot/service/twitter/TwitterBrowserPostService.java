@@ -20,11 +20,10 @@ import java.util.Map;
  * request that reaches X is a genuine, human-initiated action rather than a
  * fully scripted one.
  *
- * Used as a fallback when the GraphQL-based {@link ClixService} hits
- * account-level posting limits (e.g. error 344) that manual browser posting
- * is not subject to. A fully automated version of this flow (auto-clicking
- * Post too) was tried first and got blocked by X's automation detection
- * (error 226), which is why the final action is left to a human.
+ * This is the primary posting path for {@link ClixService}. A fully automated
+ * version (auto-clicking Post too) was tried first and got blocked by X's
+ * automation detection (error 226), which is why the final action is left to
+ * a human.
  */
 public class TwitterBrowserPostService {
 
@@ -109,7 +108,7 @@ public class TwitterBrowserPostService {
                             + "document.execCommand('selectAll',false,null);"
                             + "document.execCommand('delete',false,null);"
                             + "return true;})()");
-            session.send("Input.insertText", Map.of("text", text == null ? "" : text), COMMAND_TIMEOUT);
+            insertComposeText(session, text);
 
             if (imagePaths != null && !imagePaths.isEmpty()) {
                 if (!attachImages(session, imagePaths)) {
@@ -155,6 +154,46 @@ public class TwitterBrowserPostService {
         return ClixService.PostResult.failed(
                 "投稿の完了を確認できませんでした（" + MANUAL_POST_TIMEOUT.toMinutes() + "分待機）。"
                         + "ブラウザで「投稿」を押したか確認してください。");
+    }
+
+    /**
+     * X's compose box is a contenteditable div. A single {@code Input.insertText}
+     * with embedded {@code \n} characters does not reliably create line breaks,
+     * so each line is inserted separately with an Enter key between them.
+     */
+    private void insertComposeText(ChromiumCdpSession session, String text) throws Exception {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
+        String[] lines = normalized.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                pressEnter(session);
+            }
+            if (!lines[i].isEmpty()) {
+                session.send("Input.insertText", Map.of("text", lines[i]), COMMAND_TIMEOUT);
+            }
+        }
+    }
+
+    private void pressEnter(ChromiumCdpSession session) throws Exception {
+        Map<String, Object> keyDown = Map.of(
+                "type", "keyDown",
+                "key", "Enter",
+                "code", "Enter",
+                "windowsVirtualKeyCode", 13,
+                "nativeVirtualKeyCode", 13
+        );
+        Map<String, Object> keyUp = Map.of(
+                "type", "keyUp",
+                "key", "Enter",
+                "code", "Enter",
+                "windowsVirtualKeyCode", 13,
+                "nativeVirtualKeyCode", 13
+        );
+        session.send("Input.dispatchKeyEvent", keyDown, COMMAND_TIMEOUT);
+        session.send("Input.dispatchKeyEvent", keyUp, COMMAND_TIMEOUT);
     }
 
     private boolean attachImages(ChromiumCdpSession session, List<Path> imagePaths) throws Exception {

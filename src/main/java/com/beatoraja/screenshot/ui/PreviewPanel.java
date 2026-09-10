@@ -8,6 +8,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics2D;
@@ -20,8 +21,13 @@ import javax.swing.JSplitPane;
 
 public class PreviewPanel extends JPanel {
 
+    private static final String CARD_SINGLE = "single";
+    private static final String CARD_MULTI = "multi";
+
     private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
     private final JPanel multiPreviewPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+    private final JScrollPane multiScrollPane = new JScrollPane(multiPreviewPanel);
+    private final JPanel imageCards = new JPanel(new CardLayout());
     private final JTextArea messageArea = new JTextArea(3, 40);
     private final JScrollPane imageScrollPane = new JScrollPane(imageLabel);
 
@@ -29,20 +35,20 @@ public class PreviewPanel extends JPanel {
         setLayout(new BorderLayout());
 
         imageScrollPane.setPreferredSize(new Dimension(480, 400));
-        multiPreviewPanel.setVisible(false);
+        multiScrollPane.setPreferredSize(new Dimension(480, 400));
+        multiScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        multiScrollPane.getHorizontalScrollBar().setUnitIncrement(16);
 
-        JPanel imageContainer = new JPanel(new BorderLayout());
-        imageContainer.add(imageScrollPane, BorderLayout.CENTER);
-        imageContainer.add(multiPreviewPanel, BorderLayout.SOUTH);
+        imageCards.add(imageScrollPane, CARD_SINGLE);
+        imageCards.add(multiScrollPane, CARD_MULTI);
 
-        messageArea.setLineWrap(true);
-        messageArea.setWrapStyleWord(true);
+        messageArea.setLineWrap(false);
         messageArea.setRows(3);
         JScrollPane messageScroll = new JScrollPane(messageArea);
-        messageScroll.setPreferredSize(new Dimension(480, 72));
+        messageScroll.setPreferredSize(new Dimension(480, 96));
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, imageContainer, messageScroll);
-        splitPane.setResizeWeight(0.82);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, imageCards, messageScroll);
+        splitPane.setResizeWeight(0.75);
         splitPane.setContinuousLayout(true);
         add(splitPane, BorderLayout.CENTER);
     }
@@ -54,23 +60,26 @@ public class PreviewPanel extends JPanel {
         if (entries == null || entries.isEmpty()) {
             imageLabel.setIcon(null);
             imageLabel.setText("画像を選択してください");
-            imageScrollPane.setVisible(true);
-            multiPreviewPanel.setVisible(false);
+            showImageCard(CARD_SINGLE);
+            messageArea.setRows(3);
             revalidate();
             repaint();
             return;
         }
 
+        int lineCount = Math.max(1, message == null ? 0 : message.split("\n", -1).length);
+        messageArea.setRows(Math.min(Math.max(3, lineCount), 8));
+
         if (entries.size() == 1) {
-            imageScrollPane.setVisible(true);
-            multiPreviewPanel.setVisible(false);
+            showImageCard(CARD_SINGLE);
             imageLabel.setText("");
             imageLabel.setIcon(loadScaledImage(entries.get(0), 900, 500));
         } else {
-            imageScrollPane.setVisible(false);
-            multiPreviewPanel.setVisible(true);
+            showImageCard(CARD_MULTI);
             for (ScreenshotEntry entry : entries) {
-                multiPreviewPanel.add(new JLabel(loadScaledImage(entry, 240, 135)));
+                JLabel thumb = new JLabel(loadScaledImage(entry, 240, 135));
+                thumb.setToolTipText(entry.getFileName());
+                multiPreviewPanel.add(thumb);
             }
         }
 
@@ -80,6 +89,11 @@ public class PreviewPanel extends JPanel {
 
     public String getMessage() {
         return messageArea.getText();
+    }
+
+    private void showImageCard(String card) {
+        CardLayout layout = (CardLayout) imageCards.getLayout();
+        layout.show(imageCards, card);
     }
 
     private ImageIconWrapper loadScaledImage(ScreenshotEntry entry, int maxWidth, int maxHeight) {

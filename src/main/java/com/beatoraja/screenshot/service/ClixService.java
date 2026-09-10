@@ -2,7 +2,6 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.twitter.ClixAuthSupport;
-import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.twitter.TwitterBrowserPostService;
 import com.beatoraja.screenshot.util.ClixLocator;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,67 +40,19 @@ public class ClixService {
         return AuthResult.failed(formatFailureMessage(result));
     }
 
+    /**
+     * Opens the X compose page in the user's logged-in Chrome/Edge profile,
+     * pre-fills text and images, and waits for the user to click Post.
+     */
     public PostResult post(String text, List<Path> imagePaths) {
+        text = normalizeLineEndings(text);
         if (imagePaths == null || imagePaths.isEmpty()) {
             return PostResult.failed("画像が選択されていません。");
         }
         if (imagePaths.size() > 4) {
             return PostResult.failed("Twitter は最大4枚まで投稿できます。");
         }
-        if (resolveClixCommand() == null) {
-            return PostResult.failed(buildMissingCliMessage());
-        }
-        if (!config.hasManualTwitterAuth()) {
-            return PostResult.failed("Twitter に未ログインです。設定画面から「Twitter にログイン」を実行してください。");
-        }
-
-        List<String> command = new ArrayList<>();
-        command.add("post");
-        command.add(text == null ? "" : text);
-        for (Path imagePath : imagePaths) {
-            command.add("-i");
-            command.add(imagePath.toAbsolutePath().toString());
-        }
-        command.add("--json");
-
-        CommandResult result = run(command, false);
-        if (result.exitCode() != 0) {
-            if (shouldRetryAfterRefresh(result)) {
-                new TwitterAuthService(config).refreshSilently();
-                result = run(command, false);
-            }
-            if (result.exitCode() != 0) {
-                return postViaBrowserFallback(text, imagePaths, formatFailureMessage(result));
-            }
-        }
-
-        String tweetId = extractTweetId(result.output());
-        return PostResult.ok(tweetId, result.output());
-    }
-
-    /**
-     * The GraphQL client used above can fail for reasons that don't affect posting
-     * manually through the browser (daily posting caps, stale CSRF tokens after the
-     * browser profile's cookies rotate, transient API errors, ...). Rather than trying
-     * to special-case each one, any post failure falls back to auto-filling the real
-     * compose page and letting the user click Post themselves. If that also fails,
-     * both error messages are surfaced so nothing gets lost.
-     */
-    private PostResult postViaBrowserFallback(String text, List<Path> imagePaths, String cliFailureMessage) {
-        PostResult browserResult = new TwitterBrowserPostService().post(text, imagePaths);
-        if (browserResult.success()) {
-            return browserResult;
-        }
-        return PostResult.failed(cliFailureMessage + "\n\nブラウザ投稿も失敗しました: " + browserResult.message());
-    }
-
-    private boolean shouldRetryAfterRefresh(CommandResult result) {
-        String output = result.output() == null ? "" : result.output();
-        return output.contains("Not authenticated")
-                || output.contains("No Twitter/X credentials")
-                || output.contains("not_authenticated")
-                || output.contains("401")
-                || result.exitCode() == 2;
+        return new TwitterBrowserPostService().post(text, imagePaths);
     }
 
     private boolean isAuthenticated(String output) {
@@ -111,26 +62,6 @@ public class ClixService {
         } catch (Exception ignored) {
             return false;
         }
-    }
-
-    private String extractTweetId(String output) {
-        try {
-            JsonNode root = MAPPER.readTree(output);
-            String restId = root.path("data")
-                    .path("create_tweet")
-                    .path("tweet_results")
-                    .path("result")
-                    .path("rest_id")
-                    .asText("");
-            if (!restId.isBlank()) {
-                return restId;
-            }
-            if (root.has("id")) {
-                return root.get("id").asText();
-            }
-        } catch (Exception ignored) {
-        }
-        return "";
     }
 
     private CommandResult run(List<String> args, boolean verbose) {
@@ -262,6 +193,13 @@ public class ClixService {
 
     private Path resolveClixCommand() {
         return ClixLocator.locate().orElse(null);
+    }
+
+    static String normalizeLineEndings(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     public record AuthResult(boolean success, String message) {

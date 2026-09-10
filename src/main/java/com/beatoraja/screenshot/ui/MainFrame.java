@@ -349,18 +349,12 @@ public class MainFrame extends JFrame {
         }
 
         setPostingEnabled(false);
-        statusLabel.setText("Twitter に投稿中...");
+        statusLabel.setText("ブラウザで投稿画面を開いています...");
 
         String message = previewPanel.getMessage();
         List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         new Thread(() -> {
-            TwitterAuthService threadAuthService = new TwitterAuthService(config);
-            ClixService.AuthResult verified = threadAuthService.verifyStoredSession();
-            if (!verified.success()) {
-                threadAuthService.refreshSilently();
-            }
-
             ClixService clixService = new ClixService(config);
             ClixService.PostResult result = clixService.post(message, imagePaths);
             SwingUtilities.invokeLater(() -> {
@@ -375,7 +369,7 @@ public class MainFrame extends JFrame {
                     JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Twitter 投稿失敗");
-                    if (result.message().contains("認証")) {
+                    if (result.message().contains("ログイン") || result.message().contains("認証")) {
                         int answer = JOptionPane.showConfirmDialog(
                                 this,
                                 result.message() + "\n\nTwitter に再ログインしますか？",
