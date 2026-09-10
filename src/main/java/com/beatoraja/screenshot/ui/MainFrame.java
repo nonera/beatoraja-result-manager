@@ -304,6 +304,10 @@ public class MainFrame extends JFrame {
         if (screenshotDatabase == null) {
             return;
         }
+        // The new screenshot's play result may have just been written to
+        // scoredatalog.db, after chartResolverService last loaded it, so
+        // reload the player databases before resolving the sha256/md5.
+        reloadTableRegistry();
         try {
             screenshotDatabase.upsert(chartResolverService.enrich(entry));
             databasePanel.reload(screenshotDatabase);
