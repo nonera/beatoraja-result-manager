@@ -46,16 +46,8 @@ Windows では clix 単体の Cookie 自動取得（Chrome 127+）が動かな�
 ### リポジトリの clone
 
 ```powershell
-git clone --recurse-submodules git@github.com:nonera/beatoraja-result-manager.git
+git clone git@github.com:nonera/beatoraja-result-manager.git
 ```
-
-既に clone 済みの場合:
-
-```powershell
-git submodule update --init --recursive
-```
-
-`bemusicseeker-unofficial-fork/` は BeMusicSeeker Unofficial Fork の参照用サブモジュールです（Screenshot Manager の実行には不要。.bmt 仕様のドキュメント等）。
 
 ### 開発実行
 
@@ -95,9 +87,7 @@ screenshot/20250908_141530_LEVEL12 曲名 CLEAR AAA.png
 
 ### 難易度表連携（BeMusicSeeker / beatoraja）
 
-beatoraja の `table/` 配下にある `.bmt`（BeMusicSeeker の `.bmtを出力する` で生成）を読み込み、曲名から所属難易度表を推定します。
-
-BeMusicSeeker Unofficial Fork のドキュメントはリポジトリ内サブモジュール [`bemusicseeker-unofficial-fork/`](https://github.com/Neeted/bemusicseeker-unofficial-fork) を参照してください。
+beatoraja の `table/` 配下にある `.bmt` を読み込み、曲名から所属難易度表を推定します。
 
 - 複数表に属する譜面は **候補一覧** として DB に保存
 - データベースタブで `★3/sl3` のような **投稿表記** を選択・編集可能
