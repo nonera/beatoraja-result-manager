@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "0.1.0"
+version = "1.0.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -38,6 +38,10 @@ tasks.shadowJar {
     archiveClassifier.set("")
     archiveVersion.set(version.toString())
     mergeServiceFiles()
+    manifest {
+        attributes["Main-Class"] = "com.beatoraja.screenshot.Main"
+        attributes["Implementation-Version"] = version.toString()
+    }
 }
 
 tasks.named("build") {

@@ -13,6 +13,7 @@ import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -57,7 +58,7 @@ public class MainFrame extends JFrame {
     private SwingWorker<List<TableLookupService.EnrichedScreenshot>, Integer> indexingWorker;
 
     public MainFrame(AppConfig config) {
-        super("beatoraja Screenshot Manager");
+        super("beatoraja Screenshot Manager v" + AppVersion.get());
         this.config = config;
         this.postedStateStore = PostedStateStore.load();
         initDatabase();
