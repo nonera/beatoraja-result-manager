@@ -244,14 +244,15 @@ public class AppConfig {
     }
 
     /**
-     * Per-difficulty-table notation customization: symbol replacements keyed by
-     * the raw symbol they replace ("sl を STELLA に変える" — most tables only need
-     * one entry, but some switch symbol partway through their levels, e.g. "A1"
-     * .. "A9" then "AA1" ..) plus whether this table's notation should always be
-     * included in the default post notation even when a higher-priority table
-     * already provides one for the same song.
+     * Per-difficulty-table notation customization. {@link #symbolOverrides} normally
+     * holds one table-wide entry under the empty string key; legacy per-symbol keys
+     * are still read for backward compatibility. Also controls whether this table's
+     * notation should always be included in the default post notation even when a
+     * higher-priority table already provides one for the same song.
      */
     public static class TableNotationRule {
+        /** Map key for a table-wide symbol override (replaces the .bmt tag prefix). */
+        public static final String TABLE_WIDE_OVERRIDE_KEY = "";
         private String tableTag = "";
         private boolean alwaysInclude;
         private Map<String, String> symbolOverrides = new LinkedHashMap<>();

@@ -527,8 +527,17 @@ public class MainFrame extends JFrame {
             notationsByTagAndSymbol.put(info.tag(), bySymbol);
         }
 
+        java.util.Map<String, String> tablePrefixByTag = new java.util.LinkedHashMap<>();
+        for (com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo info : knownTables) {
+            String prefix = chartResolverService.getTablePrefix(info.tag());
+            if (!prefix.isBlank()) {
+                tablePrefixByTag.put(info.tag(), prefix);
+            }
+        }
+
         TableNotationRulesDialog dialog = new TableNotationRulesDialog(this, config.getTableNotationRules(),
-                knownTables, notationsByTagAndSymbol, chartResolverService.getLoadedFileCount());
+                knownTables, notationsByTagAndSymbol, chartResolverService.getLoadedFileCount(),
+                chartResolverService.getKnownTags(), tablePrefixByTag);
         List<AppConfig.TableNotationRule> newRules = dialog.showDialog();
         if (newRules == null) {
             return;

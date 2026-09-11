@@ -1,5 +1,6 @@
 package com.beatoraja.screenshot.table;
 
+import com.beatoraja.screenshot.config.AppConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -22,6 +23,8 @@ public class DifficultyTableRegistry {
     private final List<String> knownTags = new ArrayList<>();
     private final List<String> tableKeys = new ArrayList<>();
     private final Map<String, String> tagNames = new LinkedHashMap<>();
+    /** Folder-name prefix from each table's .bmt {@code tag} field (e.g. "14key闇★"). */
+    private final Map<String, String> tablePrefixByKey = new LinkedHashMap<>();
     private final Map<String, Map<String, Set<String>>> notationsByTagAndSymbol = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesByTitle = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesBySha256 = new LinkedHashMap<>();
@@ -127,6 +130,9 @@ public class DifficultyTableRegistry {
         if (!tableKey.isBlank()) {
             tableKeys.add(tableKey);
             tagNames.putIfAbsent(tableKey, tableName);
+            if (table.tag != null && !table.tag.isBlank()) {
+                tablePrefixByKey.put(tableKey, table.tag);
+            }
         }
 
         if (table.folder == null) {
@@ -260,21 +266,53 @@ public class DifficultyTableRegistry {
     }
 
     /**
-     * Most tables use one symbol for every level (e.g. "sl1".."sl12" all use "sl"),
-     * but some switch partway through (e.g. "A1".."A9" then "AA1".."AA9"), so renaming
-     * is keyed per raw symbol within the table rather than one substitution for the
-     * whole table: the new symbol is just re-combined with the match's own level.
+     * Replaces the shared table prefix (.bmt tag when available, otherwise the common
+     * symbol prefix) while keeping level suffixes intact, including decimals and
+     * embedded stars such as "★1" in "★★1".
      */
     private String applyRename(TableMatch match) {
         TableNotationRule rule = notationRulesByTag.get(match.tableTag());
-        if (rule == null || match.symbol().isBlank()) {
+        if (rule == null) {
             return match.notation();
         }
-        String override = rule.symbolOverrides().get(match.symbol());
+        String override = resolveSymbolOverride(rule, match.symbol());
         if (override == null || override.isBlank()) {
             return match.notation();
         }
-        return override + match.level();
+        String prefix = resolveRewritePrefix(match);
+        String rewritten = NotationPrefixResolver.applySymbolOverride(match.notation(), prefix, override);
+        if (!rewritten.equals(match.notation())) {
+            return rewritten;
+        }
+        if (!match.level().isBlank()) {
+            return override + match.level();
+        }
+        return match.notation();
+    }
+
+    private static String resolveSymbolOverride(TableNotationRule rule, String symbol) {
+        Map<String, String> overrides = rule.symbolOverrides();
+        String tableWide = overrides.get(AppConfig.TableNotationRule.TABLE_WIDE_OVERRIDE_KEY);
+        if (tableWide != null && !tableWide.isBlank()) {
+            return tableWide;
+        }
+        if (symbol != null && !symbol.isBlank()) {
+            return overrides.get(symbol);
+        }
+        return null;
+    }
+
+    String resolveRewritePrefix(TableMatch match) {
+        String tablePrefix = tablePrefixByKey.get(match.tableTag());
+        if (tablePrefix != null && !tablePrefix.isBlank() && match.notation().startsWith(tablePrefix)) {
+            return tablePrefix;
+        }
+        List<String> groupNotations = getNotationsForTagAndSymbol(match.tableTag(), match.symbol());
+        return NotationPrefixResolver.resolveReplaceablePrefix(groupNotations, knownTags, match.symbol());
+    }
+
+    public String getTablePrefix(String tableKey) {
+        return tablePrefixByKey.getOrDefault(tableKey, "");
     }
 
     private int priorityIndex(String tableTag) {
@@ -360,6 +398,7 @@ public class DifficultyTableRegistry {
         knownTags.clear();
         tableKeys.clear();
         tagNames.clear();
+        tablePrefixByKey.clear();
         notationsByTagAndSymbol.clear();
         failedTableFiles = List.of();
         loadedFileCount = 0;
@@ -390,9 +429,8 @@ public class DifficultyTableRegistry {
     }
 
     /**
-     * {@code symbolOverrides} maps a raw symbol found in this table (e.g. "A") to
-     * its replacement (e.g. "Alpha"); the level number is kept as-is. Most tables
-     * only need one entry, but some switch symbol partway through their levels.
+     * {@code symbolOverrides} normally holds one table-wide entry under the empty
+     * string key; legacy per-symbol keys are still honored as a fallback.
      */
     public record TableNotationRule(String tableTag, boolean alwaysInclude, Map<String, String> symbolOverrides) {
         public TableNotationRule {

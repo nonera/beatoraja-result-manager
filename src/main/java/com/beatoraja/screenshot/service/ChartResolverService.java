@@ -61,6 +61,14 @@ public class ChartResolverService implements AutoCloseable {
         return registry.getNotationsForTagAndSymbol(tag, symbol);
     }
 
+    public List<String> getKnownTags() {
+        return registry.getKnownTags();
+    }
+
+    public String getTablePrefix(String tableKey) {
+        return registry.getTablePrefix(tableKey);
+    }
+
     public List<String> getFailedTableFiles() {
         return registry.getFailedTableFiles();
     }

@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 public final class TableLevelParser {
 
     private static final Pattern LEVEL_ONLY = Pattern.compile("^LEVEL(\\d+|\\?\\?\\?)$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern TRAILING_LEVEL = Pattern.compile("^(\\d+|\\?\\?\\?)$");
+    private static final Pattern TRAILING_LEVEL = Pattern.compile("^(\\d+(?:\\.\\d+)?|\\?\\?\\?)$");
 
     private static final List<String> DEFAULT_TAGS = List.of(
             "DPBMS★", "DPBMS☆", "SNJ★", "SNJ☆", "sl", "st", "δ", "▼", "縦", "☆", "★"
@@ -71,7 +71,7 @@ public final class TableLevelParser {
     private static int findLevelStartIndex(String value) {
         for (int i = value.length() - 1; i >= 0; i--) {
             char ch = value.charAt(i);
-            if (Character.isDigit(ch) || ch == '?') {
+            if (Character.isDigit(ch) || ch == '?' || ch == '.') {
                 continue;
             }
             return i + 1;

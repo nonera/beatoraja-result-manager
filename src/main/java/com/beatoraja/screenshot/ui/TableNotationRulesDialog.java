@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo;
+import com.beatoraja.screenshot.table.NotationPrefixResolver;
 
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
@@ -28,19 +29,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Per-difficulty-table notation rules. Most tables use one symbol for every
- * level (e.g. "sl1".."sl12" all share "sl"), so renaming is usually just one
- * row per table. Some tables switch symbol partway through their levels
- * (e.g. "A1".."A9" then "AA1".."AA9"), so each distinct raw symbol found in a
- * table gets its own editable row instead of forcing one substitution for the
- * whole table.
- *
- * The left side is a two-column shuttle: tables move between "表示する" (always
- * include this table's notation in the default post notation) and "しない" so
- * the whole set is visible at a glance instead of toggling a checkbox one
- * table at a time. The right side lists every table/symbol's rename field at
- * once (no per-table selection needed) since there are normally few enough to
- * just show them all.
+ * Per-difficulty-table notation rules. Each loaded table gets one row for its
+ * symbol override, even when folder names switch symbol partway through levels
+ * (e.g. "★10" then "★★1") — the .bmt tag prefix is replaced as a whole.
  */
 public class TableNotationRulesDialog extends JDialog {
 
@@ -52,24 +43,29 @@ public class TableNotationRulesDialog extends JDialog {
     private final JList<TableInfo> excludeList = new JList<>(excludeModel);
 
     private final DefaultTableModel symbolTableModel = new DefaultTableModel(
-            new Object[]{"難易度表", "記号", "表記例", "変更後の記号"}, 0) {
+            new Object[]{"難易度表", "接頭辞", "変更後の例", "変更後の記号"}, 0) {
         @Override
         public boolean isCellEditable(int row, int column) {
             return column == 3;
         }
     };
     private final JTable symbolTable = new JTable(symbolTableModel);
-    private final List<String[]> rowKeys = new ArrayList<>(); // parallel to symbolTableModel rows: {tableTag, symbol}
+    private final List<String> rowTableTags = new ArrayList<>();
 
     private List<AppConfig.TableNotationRule> result;
     private final int loadedFileCount;
+    private final List<String> knownTags;
+    private final Map<String, String> tablePrefixByTag;
+    private final Map<String, List<String>> allNotationsByTag = new LinkedHashMap<>();
 
     public TableNotationRulesDialog(Frame owner, List<AppConfig.TableNotationRule> savedRules,
             List<TableInfo> knownTables, Map<String, Map<String, List<String>>> notationsByTagAndSymbol,
-            int loadedFileCount) {
+            int loadedFileCount, List<String> knownTags, Map<String, String> tablePrefixByTag) {
         super(owner, "難易度表ごとの投稿表記ルール", true);
         this.knownTables = knownTables;
         this.loadedFileCount = loadedFileCount;
+        this.knownTags = knownTags == null ? List.of() : List.copyOf(knownTags);
+        this.tablePrefixByTag = tablePrefixByTag == null ? Map.of() : Map.copyOf(tablePrefixByTag);
 
         Set<String> alwaysIncludeTags = new LinkedHashSet<>();
         Map<String, Map<String, String>> symbolOverridesByTag = new LinkedHashMap<>();
@@ -92,18 +88,16 @@ public class TableNotationRulesDialog extends JDialog {
             String label = info.name().isBlank() ? info.tag() : info.name();
             Map<String, String> overrides = symbolOverridesByTag.getOrDefault(info.tag(), Map.of());
             Map<String, List<String>> bySymbol = notationsByTagAndSymbol.getOrDefault(info.tag(), Map.of());
+            List<String> allNotations = collectNotations(bySymbol);
+            allNotationsByTag.put(info.tag(), allNotations);
 
-            if (bySymbol.isEmpty()) {
-                addRow(label, "", "", overrides.getOrDefault("", ""), info.tag(), "");
-                continue;
+            String tablePrefix = tablePrefixByTag.getOrDefault(info.tag(), "");
+            if (tablePrefix.isBlank() && !bySymbol.isEmpty()) {
+                tablePrefix = bySymbol.keySet().iterator().next();
             }
-            for (Map.Entry<String, List<String>> entry : bySymbol.entrySet()) {
-                String symbol = entry.getKey();
-                List<String> notations = entry.getValue();
-                String preview = notations.stream().limit(4).collect(Collectors.joining(", "))
-                        + (notations.size() > 4 ? " ..." : "");
-                addRow(label, symbol, preview, overrides.getOrDefault(symbol, ""), info.tag(), symbol);
-            }
+            String override = loadTableOverride(overrides);
+            String preview = formatPreview(allNotations, override, info.tag());
+            addRow(label, tablePrefix, preview, override, info.tag());
         }
 
         buildUi();
@@ -111,9 +105,70 @@ public class TableNotationRulesDialog extends JDialog {
         setLocationRelativeTo(owner);
     }
 
-    private void addRow(String label, String symbol, String preview, String override, String tag, String symbolKey) {
-        symbolTableModel.addRow(new Object[]{label, symbol, preview, override});
-        rowKeys.add(new String[]{tag, symbolKey});
+    private static List<String> collectNotations(Map<String, List<String>> bySymbol) {
+        LinkedHashSet<String> notations = new LinkedHashSet<>();
+        for (List<String> group : bySymbol.values()) {
+            notations.addAll(group);
+        }
+        return new ArrayList<>(notations);
+    }
+
+    private static String loadTableOverride(Map<String, String> overrides) {
+        String tableWide = overrides.getOrDefault(AppConfig.TableNotationRule.TABLE_WIDE_OVERRIDE_KEY, "").trim();
+        if (!tableWide.isBlank()) {
+            return tableWide;
+        }
+        List<String> distinct = overrides.values().stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+        return distinct.size() == 1 ? distinct.get(0) : "";
+    }
+
+    private void addRow(String label, String prefix, String preview, String override, String tag) {
+        symbolTableModel.addRow(new Object[]{label, prefix, preview, override});
+        rowTableTags.add(tag);
+    }
+
+    private String formatPreview(List<String> notations, String override, String tableTag) {
+        if (notations.isEmpty()) {
+            return "";
+        }
+        List<String> samples = sampleNotations(notations);
+        if (override.isBlank()) {
+            return String.join(", ", samples) + (notations.size() > samples.size() ? " ..." : "");
+        }
+        String tablePrefix = tablePrefixByTag.getOrDefault(tableTag, "");
+        String examples = samples.stream()
+                .map(notation -> {
+                    String prefix = !tablePrefix.isBlank() && notation.startsWith(tablePrefix)
+                            ? tablePrefix
+                            : NotationPrefixResolver.resolveReplaceablePrefix(notations, knownTags, "");
+                    return NotationPrefixResolver.applySymbolOverride(notation, prefix, override);
+                })
+                .collect(Collectors.joining(", "));
+        return examples + (notations.size() > samples.size() ? " ..." : "");
+    }
+
+    private static List<String> sampleNotations(List<String> notations) {
+        List<String> samples = new ArrayList<>();
+        samples.add(notations.get(0));
+        if (notations.size() > 1) {
+            samples.add(notations.get(notations.size() / 2));
+        }
+        if (notations.size() > 2) {
+            samples.add(notations.get(notations.size() - 1));
+        }
+        for (String notation : notations) {
+            if (samples.size() >= 4) {
+                break;
+            }
+            if (!samples.contains(notation)) {
+                samples.add(notation);
+            }
+        }
+        return samples.stream().limit(4).toList();
     }
 
     private void buildUi() {
@@ -122,7 +177,7 @@ public class TableNotationRulesDialog extends JDialog {
         header.add(new JLabel(
                 "<html>左で難易度表を「表示する(常に投稿表記に含める)」「しない」に振り分けてください。"
                         + "ダブルクリックか矢印ボタンで移動できます。<br>"
-                        + "右は難易度表(記号が途中で変わる表は記号ごとに複数行)の記号変更を一覧編集できます。</html>"),
+                        + "右は難易度表ごとに1行ずつ、接頭辞の置き換えを設定できます（★と★★が混在する表も1行です）。</html>"),
                 BorderLayout.NORTH);
         String countText = "難易度表: " + knownTables.size() + " 件"
                 + (loadedFileCount != knownTables.size()
@@ -242,28 +297,32 @@ public class TableNotationRulesDialog extends JDialog {
             alwaysInclude.add(includeModel.get(i).tag());
         }
 
-        Map<String, Map<String, String>> overridesByTag = new LinkedHashMap<>();
-        for (int i = 0; i < rowKeys.size(); i++) {
-            String tag = rowKeys.get(i)[0];
-            String symbol = rowKeys.get(i)[1];
+        Map<String, String> overridesByTag = new LinkedHashMap<>();
+        for (int i = 0; i < rowTableTags.size(); i++) {
+            String tag = rowTableTags.get(i);
             String override = String.valueOf(symbolTableModel.getValueAt(i, 3)).trim();
-            if (symbol.isBlank() || override.isBlank() || override.equals(symbol)) {
+            String tablePrefix = String.valueOf(symbolTableModel.getValueAt(i, 1)).trim();
+            if (override.isBlank() || override.equals(tablePrefix)) {
                 continue;
             }
-            overridesByTag.computeIfAbsent(tag, ignored -> new LinkedHashMap<>()).put(symbol, override);
+            overridesByTag.put(tag, override);
         }
 
         List<AppConfig.TableNotationRule> rules = new ArrayList<>();
         for (TableInfo info : knownTables) {
             boolean isAlwaysInclude = alwaysInclude.contains(info.tag());
-            Map<String, String> overrides = overridesByTag.getOrDefault(info.tag(), Map.of());
-            if (!isAlwaysInclude && overrides.isEmpty()) {
+            String override = overridesByTag.get(info.tag());
+            if (!isAlwaysInclude && (override == null || override.isBlank())) {
                 continue;
             }
             AppConfig.TableNotationRule configRule = new AppConfig.TableNotationRule();
             configRule.setTableTag(info.tag());
             configRule.setAlwaysInclude(isAlwaysInclude);
-            configRule.setSymbolOverrides(new LinkedHashMap<>(overrides));
+            if (override != null && !override.isBlank()) {
+                Map<String, String> overrides = new LinkedHashMap<>();
+                overrides.put(AppConfig.TableNotationRule.TABLE_WIDE_OVERRIDE_KEY, override);
+                configRule.setSymbolOverrides(overrides);
+            }
             rules.add(configRule);
         }
         return rules;
