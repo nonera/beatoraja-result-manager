@@ -11,8 +11,11 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableRowSorter;
@@ -24,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public class DatabasePanel extends JPanel {
@@ -43,6 +47,7 @@ public class DatabasePanel extends JPanel {
     private final TableRowSorter<DatabaseTableModel> sorter = new TableRowSorter<>(tableModel);
     private final MultiColumnSortSupport sortSupport = new MultiColumnSortSupport(table, sorter, 0);
     private final JComboBox<String> symbolFilterCombo = new JComboBox<>();
+    private final JTextField titleSearchField = new JTextField(20);
     private List<String> symbolPriorityOrder = List.of();
     private ScreenshotDatabase database;
     private NotationChangeListener notationChangeListener;
@@ -86,11 +91,29 @@ public class DatabasePanel extends JPanel {
             }
         });
 
-        symbolFilterCombo.addActionListener(e -> applySymbolFilter());
+        symbolFilterCombo.addActionListener(e -> applyFilters());
+        titleSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applyFilters();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applyFilters();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                applyFilters();
+            }
+        });
 
         JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         filterPanel.add(new JLabel("記号:"));
         filterPanel.add(symbolFilterCombo);
+        filterPanel.add(new JLabel("曲名検索:"));
+        filterPanel.add(titleSearchField);
 
         add(filterPanel, BorderLayout.NORTH);
         add(new JScrollPane(table), BorderLayout.CENTER);
@@ -216,12 +239,16 @@ public class DatabasePanel extends JPanel {
         } else {
             symbolFilterCombo.setSelectedItem(FILTER_ALL);
         }
-        applySymbolFilter();
+        applyFilters();
     }
 
-    private void applySymbolFilter() {
-        String selected = (String) symbolFilterCombo.getSelectedItem();
-        if (selected == null || FILTER_ALL.equals(selected)) {
+    private void applyFilters() {
+        String selectedSymbol = (String) symbolFilterCombo.getSelectedItem();
+        String titleQuery = titleSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        boolean symbolFilterActive = selectedSymbol != null && !FILTER_ALL.equals(selectedSymbol);
+        boolean titleFilterActive = !titleQuery.isEmpty();
+
+        if (!symbolFilterActive && !titleFilterActive) {
             sorter.setRowFilter(null);
             return;
         }
@@ -230,7 +257,16 @@ public class DatabasePanel extends JPanel {
             public boolean include(Entry<? extends DatabaseTableModel, ? extends Integer> entry) {
                 int modelIndex = entry.getIdentifier();
                 ScreenshotRecord record = tableModel.getRecordAt(modelIndex);
-                return selected.equals(record.tableSymbol());
+                if (symbolFilterActive && !selectedSymbol.equals(record.tableSymbol())) {
+                    return false;
+                }
+                if (titleFilterActive) {
+                    String title = record.title();
+                    if (title == null || !title.toLowerCase(Locale.ROOT).contains(titleQuery)) {
+                        return false;
+                    }
+                }
+                return true;
             }
         });
     }

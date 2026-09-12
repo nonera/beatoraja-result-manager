@@ -34,13 +34,11 @@ final class MultiColumnSortSupport {
     private final JTable table;
     private final RowSorter<? extends TableModel> sorter;
     private final List<SortSpec> sortSpecs = new ArrayList<>();
-    private final int pinnedLastColumn;
     private SortChangeListener sortChangeListener;
 
     MultiColumnSortSupport(JTable table, RowSorter<? extends TableModel> sorter, int defaultColumn) {
         this.table = table;
         this.sorter = sorter;
-        this.pinnedLastColumn = defaultColumn;
         sortSpecs.add(new SortSpec(defaultColumn, SortOrder.DESCENDING));
         applySortKeys();
 
@@ -109,25 +107,11 @@ final class MultiColumnSortSupport {
                 sortSpecs.remove(spec);
             }
         }
-        pinLastColumnToEnd();
         applySortKeys();
         table.getTableHeader().repaint();
         if (sortChangeListener != null) {
             sortChangeListener.onSortChanged();
         }
-    }
-
-    private void pinLastColumnToEnd() {
-        if (sortSpecs.size() <= 1) {
-            return;
-        }
-        Optional<SortSpec> pinned = findSpec(pinnedLastColumn);
-        if (pinned.isEmpty()) {
-            return;
-        }
-        SortSpec spec = pinned.get();
-        sortSpecs.remove(spec);
-        sortSpecs.add(spec);
     }
 
     private void applySortKeys() {
