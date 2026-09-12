@@ -159,7 +159,17 @@ public class TwitterBrowserPostService {
     /**
      * X's compose box is a contenteditable div. A single {@code Input.insertText}
      * with embedded {@code \n} characters does not reliably create line breaks,
-     * so each line is inserted separately with an Enter key between them.
+     * so each line is inserted separately with a paragraph break between them.
+     *
+     * Raw {@code Input.dispatchKeyEvent} keyDown/keyUp for Enter was tried first:
+     * the final posted text came out correct, but the visible compose box only
+     * ever rendered the first line. That is a synthetic keyboard event — it is up
+     * to X's own JS to react to it and there is no guarantee the resulting
+     * re-render (new block, caret move, box auto-grow) is done by the time the
+     * CDP call returns, even with an added delay. {@code execCommand('insertParagraph')}
+     * instead performs the paragraph split as a real, synchronous DOM/editing-host
+     * operation with its own native {@code beforeinput}/{@code input} events, which
+     * X's editor and box-height logic pick up reliably.
      */
     private void insertComposeText(ChromiumCdpSession session, String text) throws Exception {
         if (text == null || text.isEmpty()) {
@@ -169,7 +179,7 @@ public class TwitterBrowserPostService {
         String[] lines = normalized.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
             if (i > 0) {
-                pressEnter(session);
+                insertParagraphBreak(session);
             }
             if (!lines[i].isEmpty()) {
                 session.send("Input.insertText", Map.of("text", lines[i]), COMMAND_TIMEOUT);
@@ -177,23 +187,11 @@ public class TwitterBrowserPostService {
         }
     }
 
-    private void pressEnter(ChromiumCdpSession session) throws Exception {
-        Map<String, Object> keyDown = Map.of(
-                "type", "keyDown",
-                "key", "Enter",
-                "code", "Enter",
-                "windowsVirtualKeyCode", 13,
-                "nativeVirtualKeyCode", 13
-        );
-        Map<String, Object> keyUp = Map.of(
-                "type", "keyUp",
-                "key", "Enter",
-                "code", "Enter",
-                "windowsVirtualKeyCode", 13,
-                "nativeVirtualKeyCode", 13
-        );
-        session.send("Input.dispatchKeyEvent", keyDown, COMMAND_TIMEOUT);
-        session.send("Input.dispatchKeyEvent", keyUp, COMMAND_TIMEOUT);
+    private void insertParagraphBreak(ChromiumCdpSession session) throws Exception {
+        evaluateBoolean(session,
+                "(function(){var el=document.querySelector('" + TEXTAREA_SELECTOR + "');"
+                        + "if(!el){return false;}el.focus();"
+                        + "return document.execCommand('insertParagraph', false, null);})()");
     }
 
     private boolean attachImages(ChromiumCdpSession session, List<Path> imagePaths) throws Exception {
