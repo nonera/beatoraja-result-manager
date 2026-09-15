@@ -201,6 +201,13 @@ public class ScreenshotDatabase implements AutoCloseable {
         return null;
     }
 
+    public void delete(long id) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement("DELETE FROM screenshots WHERE id = ?")) {
+            delete.setLong(1, id);
+            delete.executeUpdate();
+        }
+    }
+
     private void removeMissingFiles() throws SQLException {
         List<Long> removeIds = new ArrayList<>();
         try (Statement statement = connection.createStatement();
