@@ -5,13 +5,13 @@ import com.beatoraja.screenshot.service.update.AppUpdateService;
 import com.beatoraja.screenshot.ui.FirstRunWizard;
 import com.beatoraja.screenshot.ui.MainFrame;
 import com.beatoraja.screenshot.ui.UpdateProgressDialog;
+import com.beatoraja.screenshot.ui.theme.UiTheme;
 import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -27,6 +27,7 @@ public class Main {
                         "Uncaught exception in thread " + thread.getName(), throwable));
 
         AppConfig config = AppConfig.load();
+        UiTheme.install(config.getUiTheme(), config.getUiFontFamily(), config.getUiFontSize());
         if (maybeApplyAutomaticUpdate(config, args)) {
             return;
         }
@@ -101,12 +102,6 @@ public class Main {
 
     private static void launchApplication(AppConfig config) {
         SwingUtilities.invokeLater(() -> {
-            try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception e) {
-                LOG.log(java.util.logging.Level.FINE, "Failed to set system look and feel", e);
-            }
-
             LOG.info("Starting beatoraja Screenshot Manager v" + AppVersion.get());
             if (!config.isFirstRunCompleted() || config.getScreenshotDirectory().isBlank()) {
                 showFirstRunWizard(config);
