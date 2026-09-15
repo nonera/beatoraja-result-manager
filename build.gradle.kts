@@ -5,11 +5,20 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "2.0.1"
+version = "2.0.2"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+}
+
+// javac otherwise reads .java source files using the build machine's platform default
+// charset (JDK 17 predates JEP 400's UTF-8-by-default). The source files here are UTF-8
+// with embedded Japanese text, so building on a non-UTF-8 default locale (e.g. the
+// windows-latest GitHub Actions runner) silently corrupts every Japanese string literal
+// baked into the compiled classes, without failing the build.
+tasks.withType<JavaCompile> {
+    options.encoding = "UTF-8"
 }
 
 application {
@@ -90,6 +99,7 @@ tasks.register<Exec>("jpackageApp") {
         "--main-class", "com.beatoraja.screenshot.Main",
         "--dest", outputDir.absolutePath,
         "--java-options", "-Dapp.dir=\$APP_DIR",
+        "--java-options", "-Dfile.encoding=UTF-8",
         "--icon", iconFile.absolutePath,
         "--win-console"
     )
