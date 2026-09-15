@@ -19,7 +19,10 @@ import javax.swing.DefaultComboBoxModel;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
@@ -38,6 +41,10 @@ import java.awt.Component;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -113,6 +120,32 @@ public class DatabasePanel extends JPanel {
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && selectionListener != null) {
                 selectionListener.onSelectionChanged(getSelectedEntries());
+            }
+        });
+
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowContextMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowContextMenu(e);
+            }
+
+            private void maybeShowContextMenu(MouseEvent e) {
+                if (!e.isPopupTrigger()) {
+                    return;
+                }
+                int viewRow = table.rowAtPoint(e.getPoint());
+                if (viewRow < 0) {
+                    return;
+                }
+                if (!table.isRowSelected(viewRow)) {
+                    table.setRowSelectionInterval(viewRow, viewRow);
+                }
+                showRowContextMenu(e);
             }
         });
 
@@ -329,6 +362,69 @@ public class DatabasePanel extends JPanel {
         return tableModel.getRecordAt(modelRow);
     }
 
+    private void showRowContextMenu(MouseEvent e) {
+        int selectedCount = table.getSelectedRowCount();
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem deleteItem = new JMenuItem(selectedCount > 1
+                ? "選択した " + selectedCount + " 件を削除（ファイルも削除）"
+                : "削除（ファイルも削除）");
+        deleteItem.addActionListener(ev -> deleteSelectedRows());
+        menu.add(deleteItem);
+        menu.show(table, e.getX(), e.getY());
+    }
+
+    /** Deletes the selected screenshots from disk and the database, then refreshes the table. */
+    private void deleteSelectedRows() {
+        int[] viewRows = table.getSelectedRows();
+        if (viewRows.length == 0) {
+            return;
+        }
+
+        List<ScreenshotRecord> targets = new ArrayList<>();
+        for (int viewRow : viewRows) {
+            targets.add(tableModel.getRecordAt(table.convertRowIndexToModel(viewRow)));
+        }
+
+        String message = targets.size() == 1
+                ? targets.get(0).fileName() + " を削除しますか？\nファイルも完全に削除され、元に戻せません。"
+                : targets.size() + " 件のスクショを削除しますか？\nファイルも完全に削除され、元に戻せません。";
+        int answer = JOptionPane.showConfirmDialog(this, message, "削除の確認",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (answer != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        List<String> failures = new ArrayList<>();
+        for (ScreenshotRecord record : targets) {
+            try {
+                Files.deleteIfExists(record.filePath());
+                if (database != null) {
+                    database.delete(record.id());
+                }
+            } catch (IOException | SQLException ex) {
+                failures.add(record.fileName() + ": " + ex.getMessage());
+            }
+        }
+
+        if (database != null) {
+            try {
+                reload(database);
+            } catch (SQLException ex) {
+                failures.add("一覧の再読み込みに失敗しました: " + ex.getMessage());
+            }
+        }
+
+        if (selectionListener != null) {
+            selectionListener.onSelectionChanged(getSelectedEntries());
+        }
+
+        if (!failures.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "一部のファイルを削除できませんでした:\n" + String.join("\n", failures),
+                    "削除エラー", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     public void shutdown() {
         thumbnailCache.shutdown();
     }
@@ -475,9 +571,6 @@ public class DatabasePanel extends JPanel {
             setBorder(new EmptyBorder(0, 6, 0, 6));
             String text = value == null ? "" : String.valueOf(value);
             setToolTipText("-".equals(text) || text.isBlank() ? null : text);
-            if ("-".equals(text)) {
-                setForeground(UiTheme.mutedAgainst(getForeground(), getBackground()));
-            }
             return this;
         }
     }
@@ -492,9 +585,6 @@ public class DatabasePanel extends JPanel {
                 boolean hasFocus, int row, int column) {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             setFont(table.getFont().deriveFont(Font.BOLD));
-            if ("-".equals(String.valueOf(value))) {
-                setForeground(UiTheme.mutedAgainst(getForeground(), getBackground()));
-            }
             return this;
         }
     }
