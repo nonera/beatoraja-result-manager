@@ -1,9 +1,12 @@
 package com.beatoraja.screenshot.service.twitter;
 
+import com.beatoraja.screenshot.util.AppLogging;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
@@ -19,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 final class ChromiumCdpSession implements AutoCloseable {
 
+    private static final Logger LOG = AppLogging.get(ChromiumCdpSession.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final AtomicInteger nextId = new AtomicInteger(1);
@@ -68,7 +72,8 @@ final class ChromiumCdpSession implements AutoCloseable {
                                     }
                                 }
                             }
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            LOG.log(Level.FINE, "Failed to parse CDP WebSocket message", e);
                         }
                         webSocket.request(1);
                         return null;

@@ -1,6 +1,8 @@
 package com.beatoraja.screenshot.util;
 
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -11,6 +13,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 public final class ClixLocator {
+
+    private static final Logger LOG = AppLogging.get(ClixLocator.class);
 
     private ClixLocator() {
     }
@@ -46,7 +50,8 @@ public final class ClixLocator {
                     versions.filter(Files::isDirectory)
                             .map(dir -> dir.resolve("Scripts").resolve("clix.exe"))
                             .forEach(paths::add);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    LOG.log(Level.FINE, "Failed to scan Python install directory: " + pythonRoot, e);
                 }
             }
             Path localPython = Path.of(localAppData, "Python");
@@ -55,7 +60,8 @@ public final class ClixLocator {
                     versions.filter(Files::isDirectory)
                             .map(dir -> dir.resolve("Scripts").resolve("clix.exe"))
                             .forEach(paths::add);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    LOG.log(Level.FINE, "Failed to scan Python install directory: " + localPython, e);
                 }
             }
         }
@@ -99,7 +105,8 @@ public final class ClixLocator {
                     return Optional.of(path.toAbsolutePath().normalize());
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to locate clix on system PATH", e);
         }
         return Optional.empty();
     }

@@ -9,8 +9,11 @@ import com.beatoraja.screenshot.player.SongDatabaseService;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry;
 import com.beatoraja.screenshot.table.TableLevelParser;
 import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -18,6 +21,8 @@ import java.util.List;
 import java.util.Set;
 
 public class ChartResolverService implements AutoCloseable {
+
+    private static final Logger LOG = AppLogging.get(ChartResolverService.class);
 
     private final DifficultyTableRegistry registry = new DifficultyTableRegistry();
     private PlayerPlayLogService playLogService;
@@ -146,7 +151,8 @@ public class ChartResolverService implements AutoCloseable {
 
             return new ResolvedChart(sha256, md5, fullTitle, primaryNotation, defaultPostNotation,
                     resolution.candidates(), song != null ? String.valueOf(song.level()) : "");
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to resolve chart from player data for " + entry.getFileName(), e);
             return null;
         }
     }
@@ -237,13 +243,15 @@ public class ChartResolverService implements AutoCloseable {
             if (playLogService != null) {
                 playLogService.close();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to close play log service", e);
         }
         try {
             if (songDatabaseService != null) {
                 songDatabaseService.close();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to close song database service", e);
         }
         playLogService = null;
         songDatabaseService = null;

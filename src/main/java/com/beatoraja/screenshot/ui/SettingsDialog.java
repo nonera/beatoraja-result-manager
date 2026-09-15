@@ -3,8 +3,9 @@ package com.beatoraja.screenshot.ui;
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
-
 import com.beatoraja.screenshot.player.BeatorajaPaths;
+import com.beatoraja.screenshot.util.AppLogging;
+import com.beatoraja.screenshot.util.AppPaths;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -26,12 +27,18 @@ import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Desktop;
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class SettingsDialog extends JDialog {
+
+    private static final Logger LOG = AppLogging.get(SettingsDialog.class);
 
     public interface SaveListener {
         void onSaved(AppConfig config);
@@ -205,9 +212,14 @@ public class SettingsDialog extends JDialog {
         root.add(centerPanel, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout());
+        JPanel bottomActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
+        JButton openLogs = new JButton("ログフォルダを開く");
+        openLogs.addActionListener(e -> openLogFolder());
+        bottomActions.add(openLogs);
         JButton save = new JButton("保存");
         save.addActionListener(e -> saveSettings());
-        bottom.add(save, BorderLayout.EAST);
+        bottomActions.add(save);
+        bottom.add(bottomActions, BorderLayout.EAST);
         root.add(bottom, BorderLayout.SOUTH);
 
         setContentPane(root);
@@ -307,6 +319,23 @@ public class SettingsDialog extends JDialog {
             javax.swing.SwingUtilities.invokeLater(() ->
                     twitterStatusLabel.setText(finalResult.message()));
         }, "twitter-auth-check-settings").start();
+    }
+
+    private void openLogFolder() {
+        try {
+            Path logDir = AppPaths.logsDir();
+            Files.createDirectories(logDir);
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().open(logDir.toFile());
+            } else {
+                JOptionPane.showMessageDialog(this, logDir.toAbsolutePath(), "ログフォルダ",
+                        JOptionPane.INFORMATION_MESSAGE);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to open log folder", e);
+            JOptionPane.showMessageDialog(this, "ログフォルダを開けませんでした: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void saveSettings() {

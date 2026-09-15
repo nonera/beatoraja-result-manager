@@ -2,10 +2,15 @@ package com.beatoraja.screenshot.service.twitter;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.ClixService;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class TwitterAuthService {
+
+    private static final Logger LOG = AppLogging.get(TwitterAuthService.class);
 
     private final AppConfig config;
     private final TwitterChromeLoginService chromeLoginService = new TwitterChromeLoginService();
@@ -116,7 +121,8 @@ public class TwitterAuthService {
         config.setTwitterCookies(cookies.toMutableMap());
         try {
             config.save();
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to save Twitter cookies", e);
         }
     }
 
@@ -124,7 +130,8 @@ public class TwitterAuthService {
         config.clearTwitterAuth();
         try {
             config.save();
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to save config after clearing Twitter session", e);
         }
     }
 

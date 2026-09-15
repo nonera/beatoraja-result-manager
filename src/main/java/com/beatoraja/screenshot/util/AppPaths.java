@@ -25,6 +25,10 @@ public final class AppPaths {
         return APP_DATA.resolve("posted.json");
     }
 
+    public static Path logsDir() {
+        return AppLogging.resolveLogDir();
+    }
+
     public static Path exeDir() {
         return EXE_DIR;
     }
@@ -47,7 +51,9 @@ public final class AppPaths {
             Path dir = Paths.get(appData, "beatoraja-screenshot-manager");
             try {
                 Files.createDirectories(dir);
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                System.err.println("Failed to create app data directory: " + dir.toAbsolutePath()
+                        + " (" + e.getMessage() + ")");
             }
             return dir;
         }
@@ -61,15 +67,15 @@ public final class AppPaths {
         }
 
         try {
-            Path codeSource = Path.of(AppPaths.class.getProtectionDomain()
-                    .getCodeSource()
-                    .getLocation()
-                    .toURI());
-            if (Files.isRegularFile(codeSource)) {
-                return codeSource.getParent();
-            }
-            if (Files.isDirectory(codeSource)) {
-                return codeSource;
+            var codeSourceLocation = AppPaths.class.getProtectionDomain().getCodeSource();
+            if (codeSourceLocation != null) {
+                Path codeSource = Path.of(codeSourceLocation.getLocation().toURI());
+                if (Files.isRegularFile(codeSource)) {
+                    return codeSource.getParent();
+                }
+                if (Files.isDirectory(codeSource)) {
+                    return codeSource;
+                }
             }
         } catch (Exception ignored) {
         }

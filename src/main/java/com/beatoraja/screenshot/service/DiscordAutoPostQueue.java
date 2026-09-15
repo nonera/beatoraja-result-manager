@@ -1,8 +1,10 @@
 package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import java.util.ArrayDeque;
+import java.util.logging.Logger;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
@@ -15,15 +17,22 @@ import java.util.Set;
  */
 public class DiscordAutoPostQueue {
 
+    private static final Logger LOG = AppLogging.get(DiscordAutoPostQueue.class);
+
     private final Deque<ScreenshotEntry> queue = new ArrayDeque<>();
     private final Set<String> queuedFileNames = new HashSet<>();
 
     public synchronized void offer(ScreenshotEntry entry, PostedStateStore postedStateStore) {
-        if (entry == null || postedStateStore == null || !entry.isResultScreenshot()) {
+        if (entry == null || postedStateStore == null) {
+            return;
+        }
+        if (!entry.isResultScreenshot()) {
+            LOG.fine("Skipped Discord auto-post queue (not a result screenshot): " + entry.getFileName());
             return;
         }
         String fileName = entry.getFileName();
         if (postedStateStore.get(fileName).isDiscordPosted()) {
+            LOG.fine("Skipped Discord auto-post queue (already posted): " + fileName);
             return;
         }
         if (queuedFileNames.contains(fileName)) {

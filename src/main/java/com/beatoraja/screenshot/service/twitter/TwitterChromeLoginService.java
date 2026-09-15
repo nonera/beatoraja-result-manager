@@ -1,9 +1,12 @@
 package com.beatoraja.screenshot.service.twitter;
 
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 import com.beatoraja.screenshot.util.ProcessUtils;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -14,6 +17,7 @@ import java.util.function.BooleanSupplier;
 
 public class TwitterChromeLoginService {
 
+    private static final Logger LOG = AppLogging.get(TwitterChromeLoginService.class);
     private static final Duration STARTUP_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration EXTRACTION_TIMEOUT = Duration.ofSeconds(35);
     private static final Duration COOKIE_RETRY_INTERVAL = Duration.ofMillis(1000);
@@ -117,7 +121,8 @@ public class TwitterChromeLoginService {
             if (cookies.isComplete()) {
                 return Optional.of(cookies);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to refresh Twitter cookies silently", e);
         }
         return Optional.empty();
     }

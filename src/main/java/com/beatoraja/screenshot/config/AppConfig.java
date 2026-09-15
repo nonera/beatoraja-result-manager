@@ -4,9 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,6 +20,7 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AppConfig {
 
+    private static final Logger LOG = AppLogging.get(AppConfig.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -47,6 +51,7 @@ public class AppConfig {
             config.normalizeTwitterCookies();
             return config;
         } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to load config from " + configFile.toAbsolutePath(), e);
             return new AppConfig();
         }
     }

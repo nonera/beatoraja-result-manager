@@ -1,8 +1,11 @@
 package com.beatoraja.screenshot.service.twitter;
 
 import com.beatoraja.screenshot.service.ClixService;
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 import com.beatoraja.screenshot.util.ProcessUtils;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
@@ -27,6 +30,7 @@ import java.util.Map;
  */
 public class TwitterBrowserPostService {
 
+    private static final Logger LOG = AppLogging.get(TwitterBrowserPostService.class);
     private static final String COMPOSE_URL = "https://x.com/compose/post";
     private static final String TEXTAREA_SELECTOR = "div[data-testid^=\"tweetTextarea_\"]";
     private static final String POST_BUTTON_SELECTOR = "[data-testid=\"tweetButton\"], [data-testid=\"tweetButtonInline\"]";
@@ -77,7 +81,8 @@ public class TwitterBrowserPostService {
             stopBrowser();
             try {
                 ChromiumProfileLock.waitForProfileUnlock(profileDir);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                LOG.log(Level.FINE, "Failed while waiting for Twitter Chrome profile unlock", e);
             }
         }
     }

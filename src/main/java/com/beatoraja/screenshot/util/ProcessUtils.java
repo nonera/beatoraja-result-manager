@@ -1,8 +1,12 @@
 package com.beatoraja.screenshot.util;
 
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class ProcessUtils {
+
+    private static final Logger LOG = AppLogging.get(ProcessUtils.class);
 
     private ProcessUtils() {
     }
@@ -27,7 +31,8 @@ public final class ProcessUtils {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to destroy process tree for pid " + process.pid(), e);
             process.destroyForcibly();
         }
     }

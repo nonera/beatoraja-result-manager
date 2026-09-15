@@ -1,6 +1,10 @@
 package com.beatoraja.screenshot.service.twitter;
 
+import com.beatoraja.screenshot.util.AppLogging;
+
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -11,6 +15,7 @@ import java.time.Duration;
  */
 final class ChromiumProfileLock {
 
+    private static final Logger LOG = AppLogging.get(ChromiumProfileLock.class);
     private static final Duration UNLOCK_TIMEOUT = Duration.ofSeconds(25);
 
     private ChromiumProfileLock() {
@@ -20,7 +25,8 @@ final class ChromiumProfileLock {
         try {
             Files.deleteIfExists(profileDir.resolve("DevToolsActivePort"));
             Files.deleteIfExists(profileDir.resolve("DevToolsActivePort.lock"));
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.FINE, "Failed to clear Chromium debug artifacts in " + profileDir, e);
         }
     }
 

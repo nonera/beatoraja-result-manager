@@ -1,9 +1,12 @@
 package com.beatoraja.screenshot.player;
 
+import com.beatoraja.screenshot.util.AppLogging;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,6 +16,7 @@ import java.util.stream.Stream;
 
 public final class BeatorajaPaths {
 
+    private static final Logger LOG = AppLogging.get(BeatorajaPaths.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Path beatorajaDirectory;
@@ -94,7 +98,8 @@ public final class BeatorajaPaths {
             try {
                 JsonNode root = MAPPER.readTree(configFile.toFile());
                 playerPathValue = root.path("playerpath").asText("player");
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "Failed to read config_sys.json from " + configFile.toAbsolutePath(), e);
             }
         }
 
@@ -111,7 +116,8 @@ public final class BeatorajaPaths {
                     .map(path -> path.getFileName().toString())
                     .sorted(Comparator.naturalOrder())
                     .forEach(names::add);
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to list player directories in " + playerPath.toAbsolutePath(), e);
         }
         return names;
     }

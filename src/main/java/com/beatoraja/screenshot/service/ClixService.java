@@ -3,6 +3,7 @@ package com.beatoraja.screenshot.service;
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.twitter.ClixAuthSupport;
 import com.beatoraja.screenshot.service.twitter.TwitterBrowserPostService;
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.ClixLocator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,9 +15,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class ClixService {
 
+    private static final Logger LOG = AppLogging.get(ClixService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final AppConfig config;
@@ -59,7 +63,8 @@ public class ClixService {
         try {
             JsonNode root = MAPPER.readTree(output);
             return root.path("authenticated").asBoolean(false);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to parse clix auth status JSON", e);
             return false;
         }
     }
@@ -100,7 +105,8 @@ public class ClixService {
             if (outputFile != null) {
                 try {
                     Files.deleteIfExists(outputFile);
-                } catch (IOException ignored) {
+                } catch (IOException e) {
+                    LOG.log(Level.FINE, "Failed to delete temporary clix output file", e);
                 }
             }
         }
@@ -132,7 +138,8 @@ public class ClixService {
             if (!message.isBlank()) {
                 return enrichMessage(message, root.path("code").asText(""), result.exitCode());
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to parse clix failure JSON", e);
         }
 
         if (output.contains("Not authenticated")

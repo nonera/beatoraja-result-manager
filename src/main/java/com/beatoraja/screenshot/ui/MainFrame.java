@@ -14,6 +14,7 @@ import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.JButton;
@@ -38,9 +39,13 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class MainFrame extends JFrame {
+
+    private static final Logger LOG = AppLogging.get(MainFrame.class);
 
     private final AppConfig config;
     private PostedStateStore postedStateStore;
@@ -334,8 +339,13 @@ public class MainFrame extends JFrame {
     }
 
     private void onScreenshotDetected(ScreenshotEntry entry) {
+        LOG.info("Screenshot detected: " + entry.getFileName() + " (" + entry.getStateLabel() + ")");
         syncDatabaseEntry(entry);
+        int queueSizeBefore = discordAutoPostQueue.size();
         discordAutoPostQueue.offer(entry, postedStateStore);
+        if (discordAutoPostQueue.size() > queueSizeBefore) {
+            LOG.info("Discord auto-post queue: " + discordAutoPostQueue.size() + " item(s)");
+        }
         tryAutoPostDiscord();
         statusLabel.setText("新しいスクショを検出しました");
     }
@@ -358,6 +368,8 @@ public class MainFrame extends JFrame {
             return;
         }
 
+        LOG.info("Discord auto-post starting: " + batch.size() + " image(s) via "
+                + AppLogging.maskWebhookUrl(webhook.getUrl()));
         discordAutoPostInProgress = true;
         new Thread(() -> {
             AutoDiscordPostResult result = postDiscordBatch(batch, webhook);
@@ -365,11 +377,15 @@ public class MainFrame extends JFrame {
                 discordAutoPostInProgress = false;
                 if (!result.failedEntries().isEmpty()) {
                     discordAutoPostQueue.requeueFront(result.failedEntries());
+                    LOG.warning("Discord auto-post failed, requeued "
+                            + result.failedEntries().size() + " image(s): "
+                            + AppLogging.sanitize(result.errorMessage()));
                 }
                 if (result.postedCount() > 0) {
                     savePostedStateQuietly();
                     databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Discord 自動投稿: " + result.postedCount() + " 枚送信");
+                    LOG.info("Discord auto-post succeeded: " + result.postedCount() + " image(s)");
                 } else if (result.errorMessage() != null) {
                     statusLabel.setText("Discord 自動投稿失敗: " + result.errorMessage());
                 }
@@ -420,6 +436,7 @@ public class MainFrame extends JFrame {
 
         setPostingEnabled(false);
         statusLabel.setText("ブラウザで投稿画面を開いています...");
+        LOG.info("Twitter manual post started: " + selected.size() + " image(s)");
 
         String message = previewPanel.getMessage();
         List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
@@ -430,6 +447,7 @@ public class MainFrame extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
                 if (result.success()) {
+                    LOG.info("Twitter manual post succeeded");
                     for (ScreenshotEntry entry : selected) {
                         postedStateStore.markTwitterPosted(entry.getFileName(), result.tweetId());
                     }
@@ -439,6 +457,7 @@ public class MainFrame extends JFrame {
                     JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Twitter 投稿失敗");
+                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(result.message()));
                     if (result.message().contains("ログイン") || result.message().contains("認証")) {
                         int answer = JOptionPane.showConfirmDialog(
                                 this,
@@ -476,6 +495,8 @@ public class MainFrame extends JFrame {
 
         setPostingEnabled(false);
         statusLabel.setText("Discord に送信中...");
+        LOG.info("Discord manual post started: " + selected.size() + " image(s) via "
+                + AppLogging.maskWebhookUrl(webhook.getUrl()));
 
         String message = previewPanel.getMessage();
         List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
@@ -486,6 +507,7 @@ public class MainFrame extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
                 if (result.success()) {
+                    LOG.info("Discord manual post succeeded");
                     for (ScreenshotEntry entry : selected) {
                         postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
                     }
@@ -495,6 +517,7 @@ public class MainFrame extends JFrame {
                     JOptionPane.showMessageDialog(this, "Discord に送信しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Discord 送信失敗");
+                    LOG.warning("Discord manual post failed: " + AppLogging.sanitize(result.message()));
                     JOptionPane.showMessageDialog(this, result.message(), "Discord 送信失敗", JOptionPane.ERROR_MESSAGE);
                 }
             });
@@ -504,7 +527,8 @@ public class MainFrame extends JFrame {
     private void savePostedStateQuietly() {
         try {
             postedStateStore.save();
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to save posted state", e);
         }
     }
 
@@ -628,10 +652,12 @@ public class MainFrame extends JFrame {
         if (screenshotDatabase != null) {
             try {
                 screenshotDatabase.close();
-            } catch (SQLException ignored) {
+            } catch (SQLException e) {
+                LOG.log(Level.WARNING, "Failed to close screenshot database", e);
             }
         }
         chartResolverService.close();
+        LOG.info("Main window closed");
         super.dispose();
     }
 }

@@ -4,9 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -15,6 +18,7 @@ import java.util.Map;
 
 public class PostedStateStore {
 
+    private static final Logger LOG = AppLogging.get(PostedStateStore.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -32,7 +36,8 @@ public class PostedStateStore {
             if (data.entries != null) {
                 store.records.putAll(data.entries);
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to load posted state from " + file.toAbsolutePath(), e);
         }
         return store;
     }

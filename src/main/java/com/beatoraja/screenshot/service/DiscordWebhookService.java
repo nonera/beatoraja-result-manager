@@ -1,9 +1,12 @@
 package com.beatoraja.screenshot.service;
 
+import com.beatoraja.screenshot.util.AppLogging;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,6 +20,7 @@ import java.util.UUID;
 
 public class DiscordWebhookService {
 
+    private static final Logger LOG = AppLogging.get(DiscordWebhookService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String BOUNDARY_PREFIX = "----BeatorajaScreenshot";
 
@@ -83,7 +87,8 @@ public class DiscordWebhookService {
             if (root.has("id")) {
                 return root.get("id").asText();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to parse Discord webhook response JSON", e);
         }
         return "";
     }

@@ -2,8 +2,11 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.parser.FilenameParser;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class ScreenshotWatcher implements AutoCloseable {
+
+    private static final Logger LOG = AppLogging.get(ScreenshotWatcher.class);
 
     public interface Listener {
         void onScreenshotAdded(ScreenshotEntry entry);
@@ -90,7 +95,8 @@ public class ScreenshotWatcher implements AutoCloseable {
         if (watchService != null) {
             try {
                 watchService.close();
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "Failed to close screenshot watch service", e);
             }
             watchService = null;
         }
