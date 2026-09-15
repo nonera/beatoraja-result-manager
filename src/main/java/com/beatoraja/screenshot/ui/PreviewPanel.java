@@ -10,6 +10,8 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Component;
@@ -20,8 +22,16 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.List;
-import javax.swing.JSplitPane;
+import java.util.Map;
 
+/**
+ * Shows the currently selected screenshot(s) and lets the user edit the post text.
+ * With multiple images, each image owns its own text field (keyed by file name in
+ * {@link MessageChangeListener} callbacks) instead of one shared block of text, so
+ * reordering or deleting a line can never desynchronize a caption from its image.
+ * With a single image, that same per-image field sits directly under it - there is
+ * no separate shared text box.
+ */
 public class PreviewPanel extends JPanel {
 
     public interface PostOrderChangeListener {
@@ -30,78 +40,125 @@ public class PreviewPanel extends JPanel {
         void onMoveDown(int index);
     }
 
+    public interface MessageChangeListener {
+        void onMessageChanged(String fileName, String text);
+    }
+
     private static final String CARD_SINGLE = "single";
     private static final String CARD_MULTI = "multi";
-
-    private PostOrderChangeListener postOrderChangeListener;
-
-    private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
     private static final int MULTI_PREVIEW_WIDTH = 440;
 
+    private PostOrderChangeListener postOrderChangeListener;
+    private MessageChangeListener messageChangeListener;
+    private boolean programmaticTextUpdate;
+    private String singleEntryFileName;
+
+    private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
+    private final JTextArea singleMessageArea = new JTextArea(3, 40);
     private final JPanel multiPreviewPanel = new JPanel();
     private final JScrollPane multiScrollPane = new JScrollPane(multiPreviewPanel);
-    private final JPanel imageCards = new JPanel(new CardLayout());
-    private final JTextArea messageArea = new JTextArea(3, 40);
-    private final JScrollPane imageScrollPane = new JScrollPane(imageLabel);
+    private final JPanel cards = new JPanel(new CardLayout());
 
     public PreviewPanel() {
         setLayout(new BorderLayout());
 
-        imageScrollPane.setPreferredSize(new Dimension(480, 400));
+        JScrollPane imageScrollPane = new JScrollPane(imageLabel);
+        imageScrollPane.setPreferredSize(new Dimension(480, 380));
+
+        singleMessageArea.setLineWrap(false);
+        singleMessageArea.setRows(3);
+        singleMessageArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                notifySingleMessageChanged();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                notifySingleMessageChanged();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                notifySingleMessageChanged();
+            }
+        });
+        JScrollPane singleMessageScroll = new JScrollPane(singleMessageArea);
+        singleMessageScroll.setPreferredSize(new Dimension(480, 96));
+
+        JPanel singleCard = new JPanel(new BorderLayout(0, 8));
+        singleCard.add(imageScrollPane, BorderLayout.CENTER);
+        singleCard.add(singleMessageScroll, BorderLayout.SOUTH);
+
         multiPreviewPanel.setLayout(new BoxLayout(multiPreviewPanel, BoxLayout.Y_AXIS));
-        multiScrollPane.setPreferredSize(new Dimension(480, 400));
+        multiScrollPane.setPreferredSize(new Dimension(480, 480));
         multiScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         multiScrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
-        imageCards.add(imageScrollPane, CARD_SINGLE);
-        imageCards.add(multiScrollPane, CARD_MULTI);
-
-        messageArea.setLineWrap(false);
-        messageArea.setRows(3);
-        JScrollPane messageScroll = new JScrollPane(messageArea);
-        messageScroll.setPreferredSize(new Dimension(480, 96));
-
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, imageCards, messageScroll);
-        splitPane.setResizeWeight(0.75);
-        splitPane.setContinuousLayout(true);
-        add(splitPane, BorderLayout.CENTER);
+        cards.add(singleCard, CARD_SINGLE);
+        cards.add(multiScrollPane, CARD_MULTI);
+        add(cards, BorderLayout.CENTER);
     }
 
     public void setPostOrderChangeListener(PostOrderChangeListener listener) {
         this.postOrderChangeListener = listener;
     }
 
-    public void showEntries(List<ScreenshotEntry> entries, String message) {
-        messageArea.setText(message == null ? "" : message);
+    public void setMessageChangeListener(MessageChangeListener listener) {
+        this.messageChangeListener = listener;
+    }
+
+    private void notifySingleMessageChanged() {
+        if (!programmaticTextUpdate && messageChangeListener != null && singleEntryFileName != null) {
+            messageChangeListener.onMessageChanged(singleEntryFileName, singleMessageArea.getText());
+        }
+    }
+
+    private void setSingleMessageText(String text) {
+        programmaticTextUpdate = true;
+        try {
+            singleMessageArea.setText(text == null ? "" : text);
+        } finally {
+            programmaticTextUpdate = false;
+        }
+    }
+
+    /**
+     * @param messagesByFile current post text for each entry, keyed by {@link ScreenshotEntry#getFileName()}
+     */
+    public void showEntries(List<ScreenshotEntry> entries, Map<String, String> messagesByFile) {
         multiPreviewPanel.removeAll();
 
         if (entries == null || entries.isEmpty()) {
             imageLabel.setIcon(null);
             imageLabel.setText("画像を選択してください");
-            showImageCard(CARD_SINGLE);
-            messageArea.setRows(3);
+            showCard(CARD_SINGLE);
+            singleEntryFileName = null;
+            setSingleMessageText("");
             revalidate();
             repaint();
             return;
         }
 
-        int lineCount = Math.max(1, message == null ? 0 : message.split("\n", -1).length);
-        messageArea.setRows(Math.min(Math.max(3, lineCount), 8));
-
         if (entries.size() == 1) {
-            showImageCard(CARD_SINGLE);
+            ScreenshotEntry entry = entries.get(0);
+            showCard(CARD_SINGLE);
             imageLabel.setText("");
-            imageLabel.setIcon(loadScaledImage(entries.get(0), 900, 500));
+            imageLabel.setIcon(loadScaledImage(entry, 900, 500));
+            singleEntryFileName = entry.getFileName();
+            setSingleMessageText(messagesByFile == null ? "" : messagesByFile.get(entry.getFileName()));
         } else {
-            showImageCard(CARD_MULTI);
-            JLabel orderHint = new JLabel("投稿順 (↑↓で変更)");
+            showCard(CARD_MULTI);
+            singleEntryFileName = null;
+            JLabel orderHint = new JLabel("投稿順 (↑↓で変更)。各画像の投稿文はその画像専用で、投稿時に順番どおり結合されます。");
             orderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
             multiPreviewPanel.add(orderHint);
             multiPreviewPanel.add(Box.createVerticalStrut(4));
 
             for (int i = 0; i < entries.size(); i++) {
                 ScreenshotEntry entry = entries.get(i);
-                multiPreviewPanel.add(buildMultiPreviewRow(entries, entry, i));
+                String text = messagesByFile == null ? "" : messagesByFile.get(entry.getFileName());
+                multiPreviewPanel.add(buildMultiPreviewRow(entries, entry, i, text));
                 if (i < entries.size() - 1) {
                     multiPreviewPanel.add(Box.createVerticalStrut(8));
                 }
@@ -113,11 +170,7 @@ public class PreviewPanel extends JPanel {
         repaint();
     }
 
-    public String getMessage() {
-        return messageArea.getText();
-    }
-
-    private JPanel buildMultiPreviewRow(List<ScreenshotEntry> entries, ScreenshotEntry entry, int index) {
+    private JPanel buildMultiPreviewRow(List<ScreenshotEntry> entries, ScreenshotEntry entry, int index, String text) {
         JPanel row = new JPanel(new BorderLayout(6, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
@@ -153,14 +206,50 @@ public class PreviewPanel extends JPanel {
         JLabel thumb = new JLabel(loadScaledImage(entry, MULTI_PREVIEW_WIDTH, 900));
         thumb.setToolTipText(entry.getFileName());
 
+        // Text is set via the constructor, before the listener below is attached,
+        // so seeding it here never reports back as a user edit.
+        JTextArea entryMessageArea = new JTextArea(text == null ? "" : text, 2, 30);
+        entryMessageArea.setLineWrap(true);
+        entryMessageArea.setWrapStyleWord(true);
+        String fileName = entry.getFileName();
+        entryMessageArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            private void fire() {
+                if (messageChangeListener != null) {
+                    messageChangeListener.onMessageChanged(fileName, entryMessageArea.getText());
+                }
+            }
+        });
+        JScrollPane entryMessageScroll = new JScrollPane(entryMessageArea);
+        entryMessageScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        entryMessageScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        JPanel content = new JPanel(new BorderLayout(0, 4));
+        content.add(thumb, BorderLayout.NORTH);
+        content.add(entryMessageScroll, BorderLayout.CENTER);
+
         row.add(controls, BorderLayout.WEST);
-        row.add(thumb, BorderLayout.CENTER);
+        row.add(content, BorderLayout.CENTER);
         return row;
     }
 
-    private void showImageCard(String card) {
-        CardLayout layout = (CardLayout) imageCards.getLayout();
-        layout.show(imageCards, card);
+    private void showCard(String card) {
+        CardLayout layout = (CardLayout) cards.getLayout();
+        layout.show(cards, card);
     }
 
     private ImageIconWrapper loadScaledImage(ScreenshotEntry entry, int maxWidth, int maxHeight) {
