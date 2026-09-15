@@ -4,12 +4,13 @@ beatoraja の F6 スクショを一覧表示し、Twitter（[clix](https://githu
 
 ## 利用者向け（exe だけ使う場合）
 
-1. `dist/beatoraja-screenshot-manager.zip` を解凍
-2. `beatoraja-screenshot-manager.exe` を実行
-3. 初回ウィザードで beatoraja フォルダを選択
-4. 必要なら Discord Webhook URL を入力
-5. Twitter 利用時は設定画面または初回ウィザードから **「Twitter にログイン」** を実行
-6. 表示された Chrome / Edge で X にログイン（初回のみ。以後は自動でセッションを再利用）
+1. [GitHub Releases](https://github.com/nonera/beatoraja-result-manager/releases) から最新の `beatoraja-screenshot-manager.zip` をダウンロード
+2. zip を解凍
+3. `beatoraja-screenshot-manager.exe` を実行
+4. 初回ウィザードで beatoraja フォルダを選択
+5. 必要なら Discord Webhook URL を入力
+6. Twitter 利用時は設定画面または初回ウィザードから **「Twitter にログイン」** を実行
+7. 表示された Chrome / Edge で X にログイン（初回のみ。以後は自動でセッションを再利用）
 
 **Twitter 認証について:**
 
@@ -94,6 +95,15 @@ Twitter 投稿には **clix** が必要です。初回のみ以下を実行し�
 - 出力: `dist/beatoraja-screenshot-manager.zip`
 
 Python がない環境では `tools/clix.exe` を手動配置してください。
+
+### GitHub Releases への公開
+
+`v*` 形式の tag を push すると `.github/workflows/release.yml` が zip をビルドして Release に添付します。
+
+```powershell
+git tag v1.3.0
+git push origin v1.3.0
+```
 
 ## beatoraja 連携
 
