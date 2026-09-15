@@ -25,17 +25,30 @@ New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
 
 Copy-Item $shadowJar.FullName (Join-Path $inputDir $shadowJar.Name)
 
+$appVersion = (& .\gradlew.bat -q properties | Where-Object { $_ -match '^version:' } | ForEach-Object { ($_ -split ':', 2)[1].Trim() })
+if (-not $appVersion) {
+    throw "Could not read project version from Gradle"
+}
+Write-Host "Application version: $appVersion"
+
+$iconPath = Join-Path $ProjectRoot "packaging\app-icon.ico"
+if (-not (Test-Path $iconPath)) {
+    throw "Application icon not found: $iconPath"
+}
+
 Write-Host "==> Creating app-image with jpackage"
 # jpackage refuses to write into a destination that already exists, so it must
 # own creation of $distDir itself - do not pre-create it (or any subfolder).
 jpackage `
     --type app-image `
     --name beatoraja-screenshot-manager `
+    --app-version $appVersion `
     --input $inputDir `
     --main-jar $shadowJar.Name `
     --main-class com.beatoraja.screenshot.Main `
     --dest (Join-Path $ProjectRoot "dist") `
-    --java-options "-Dapp.dir=`$APP_DIR"
+    --java-options "-Dapp.dir=`$APP_DIR" `
+    --icon $iconPath
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
 }

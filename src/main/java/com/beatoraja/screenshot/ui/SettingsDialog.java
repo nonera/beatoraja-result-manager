@@ -4,6 +4,7 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
+import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 
@@ -55,15 +56,17 @@ public class SettingsDialog extends JDialog {
     private final JSpinner discordAutoPostBatchSpinner = new JSpinner(
             new SpinnerNumberModel(4, 1, 10, 1));
     private final JComboBox<String> discordAutoPostWebhookCombo = new JComboBox<>();
+    private final JCheckBox autoUpdateEnabledBox = new JCheckBox("起動時に GitHub Releases から自動更新する");
 
     public SettingsDialog(Frame owner, AppConfig config, SaveListener listener) {
         super(owner, "設定", true);
+        AppIcons.applyTo(this);
         this.config = config;
         this.listener = listener;
         buildUi();
         loadValues();
         refreshTwitterStatusQuietly();
-        setSize(760, 720);
+        setSize(760, 760);
         setLocationRelativeTo(owner);
     }
 
@@ -206,9 +209,26 @@ public class SettingsDialog extends JDialog {
         autoGbc.gridwidth = 2;
         discordAutoPanel.add(new JLabel("リザルト（Result）の未投稿スクショが設定枚数に達したら自動送信します（1〜10枚）"), autoGbc);
 
+        JPanel appUpdatePanel = new JPanel(new GridBagLayout());
+        appUpdatePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("アプリ更新"));
+        GridBagConstraints updateGbc = new GridBagConstraints();
+        updateGbc.insets = new Insets(6, 6, 6, 6);
+        updateGbc.gridx = 0;
+        updateGbc.gridy = 0;
+        updateGbc.gridwidth = 2;
+        updateGbc.anchor = GridBagConstraints.WEST;
+        appUpdatePanel.add(autoUpdateEnabledBox, updateGbc);
+        updateGbc.gridy++;
+        appUpdatePanel.add(new JLabel("新しい zip をダウンロードして上書き後、自動的に再起動します"), updateGbc);
+
+        JPanel southStack = new JPanel();
+        southStack.setLayout(new javax.swing.BoxLayout(southStack, javax.swing.BoxLayout.Y_AXIS));
+        southStack.add(discordAutoPanel);
+        southStack.add(appUpdatePanel);
+
         JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
         centerPanel.add(webhookScroll, BorderLayout.CENTER);
-        centerPanel.add(discordAutoPanel, BorderLayout.SOUTH);
+        centerPanel.add(southStack, BorderLayout.SOUTH);
         root.add(centerPanel, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout());
@@ -232,6 +252,7 @@ public class SettingsDialog extends JDialog {
         discordAutoPostEnabledBox.setSelected(config.isDiscordAutoPostEnabled());
         discordAutoPostBatchSpinner.setValue(config.getDiscordAutoPostBatchSize());
         reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
+        autoUpdateEnabledBox.setSelected(config.isAutoUpdateEnabled());
         twitterStatusLabel.setText(config.hasManualTwitterAuth() ? "ログイン情報あり（未確認）" : "未ログイン");
         refreshPlayerNames();
         playerNameCombo.getEditor().setItem(config.getPlayerName());
@@ -355,6 +376,7 @@ public class SettingsDialog extends JDialog {
                 : String.valueOf(discordAutoPostWebhookCombo.getSelectedItem()).trim();
         reloadDiscordAutoPostWebhookChoices(currentWebhookName);
         config.setDiscordAutoPostEnabled(discordAutoPostEnabledBox.isSelected());
+        config.setAutoUpdateEnabled(autoUpdateEnabledBox.isSelected());
         config.setDiscordAutoPostBatchSize((Integer) discordAutoPostBatchSpinner.getValue());
         Object selectedWebhook = discordAutoPostWebhookCombo.getSelectedItem();
         config.setDiscordAutoPostWebhookName(selectedWebhook == null ? "" : String.valueOf(selectedWebhook).trim());

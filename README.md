@@ -57,6 +57,13 @@ Windows では clix 単体の Cookie 自動取得（Chrome 127+）が動かな�
 
 設定画面の **ログフォルダを開く** からフォルダを開けます。Webhook URL などの秘密情報はログ上でマスクされます。
 
+### 自動更新
+
+zip 版（GitHub Releases から取得した配布物）では、起動時に最新 Release を確認します。新しい版がある場合、zip を自動ダウンロードしてアプリフォルダを上書きしたうえで再起動します。設定画面の **アプリ更新** で ON/OFF できます。
+
+- 設定・投稿状態などは `%APPDATA%` 側にあるため、更新で消えません
+- `./gradlew run` など開発実行（バージョン `dev`）では更新確認しません
+
 ## 開発者向け
 
 ### 必要環境
@@ -101,8 +108,8 @@ Python がない環境では `tools/clix.exe` を手動配置してください�
 `v*` 形式の tag を push すると `.github/workflows/release.yml` が zip をビルドして Release に添付します。
 
 ```powershell
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 ## beatoraja 連携

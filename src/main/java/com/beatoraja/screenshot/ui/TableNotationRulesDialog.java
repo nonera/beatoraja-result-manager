@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo;
+import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.table.NotationPrefixResolver;
 
 import javax.swing.BoxLayout;
@@ -62,6 +63,7 @@ public class TableNotationRulesDialog extends JDialog {
             List<TableInfo> knownTables, Map<String, Map<String, List<String>>> notationsByTagAndSymbol,
             int loadedFileCount, List<String> knownTags, Map<String, String> tablePrefixByTag) {
         super(owner, "難易度表ごとの投稿表記ルール", true);
+        AppIcons.applyTo(this);
         this.knownTables = knownTables;
         this.loadedFileCount = loadedFileCount;
         this.knownTags = knownTags == null ? List.of() : List.copyOf(knownTags);

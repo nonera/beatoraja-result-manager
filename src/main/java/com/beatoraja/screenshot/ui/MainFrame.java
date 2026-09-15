@@ -14,6 +14,7 @@ import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
@@ -67,6 +68,7 @@ public class MainFrame extends JFrame {
 
     public MainFrame(AppConfig config) {
         super("beatoraja Screenshot Manager v" + AppVersion.get());
+        AppIcons.applyTo(this);
         this.config = config;
         this.postedStateStore = PostedStateStore.load();
         initDatabase();

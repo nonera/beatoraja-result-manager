@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo;
+import com.beatoraja.screenshot.util.AppIcons;
 
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
@@ -40,6 +41,7 @@ public class TablePriorityDialog extends JDialog {
     public TablePriorityDialog(Frame owner, List<String> savedOrder, List<TableInfo> knownTables,
             java.util.Map<String, String> symbolOverrideByTag, int loadedFileCount) {
         super(owner, "難易度表の優先順位", true);
+        AppIcons.applyTo(this);
         java.util.Map<String, String> namesByTag = new java.util.LinkedHashMap<>();
         List<String> knownTags = new ArrayList<>();
         for (TableInfo info : knownTables) {

@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.ClixService;
+import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
 import javax.swing.JButton;
@@ -29,6 +30,7 @@ public class TwitterLoginDialog extends JDialog {
 
     public TwitterLoginDialog(Window owner, AppConfig config) {
         super(owner, "Twitter ログイン", ModalityType.APPLICATION_MODAL);
+        AppIcons.applyTo(this);
         this.config = config;
         buildUi();
         setSize(620, 220);
