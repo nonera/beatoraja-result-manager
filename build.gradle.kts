@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "1.3.0"
+version = "1.4.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -77,15 +77,19 @@ tasks.register<Exec>("jpackageApp") {
         outputDir.mkdirs()
     }
 
+    val iconFile = project.file("packaging/app-icon.ico")
+
     commandLine(
         "jpackage",
         "--type", "app-image",
         "--name", "beatoraja-screenshot-manager",
+        "--app-version", version.toString(),
         "--input", shadowJar.parentFile.absolutePath,
         "--main-jar", shadowJar.name,
         "--main-class", "com.beatoraja.screenshot.Main",
         "--dest", outputDir.absolutePath,
         "--java-options", "-Dapp.dir=\$APP_DIR",
+        "--icon", iconFile.absolutePath,
         "--win-console"
     )
 }

@@ -33,6 +33,7 @@ public class AppConfig {
     private boolean discordAutoPostEnabled;
     private int discordAutoPostBatchSize = 4;
     private String discordAutoPostWebhookName = "";
+    private Boolean autoUpdateEnabled;
     private List<String> tablePriorityOrder = new ArrayList<>();
     private List<TableNotationRule> tableNotationRules = new ArrayList<>();
     private String twitterBrowser = "";
@@ -158,6 +159,14 @@ public class AppConfig {
             }
         }
         return null;
+    }
+
+    public boolean isAutoUpdateEnabled() {
+        return autoUpdateEnabled == null || autoUpdateEnabled;
+    }
+
+    public void setAutoUpdateEnabled(boolean autoUpdateEnabled) {
+        this.autoUpdateEnabled = autoUpdateEnabled;
     }
 
     public List<String> getTablePriorityOrder() {
