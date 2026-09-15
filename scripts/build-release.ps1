@@ -48,6 +48,7 @@ jpackage `
     --main-class com.beatoraja.screenshot.Main `
     --dest (Join-Path $ProjectRoot "dist") `
     --java-options "-Dapp.dir=`$APP_DIR" `
+    --java-options "-Dfile.encoding=UTF-8" `
     --icon $iconPath
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
