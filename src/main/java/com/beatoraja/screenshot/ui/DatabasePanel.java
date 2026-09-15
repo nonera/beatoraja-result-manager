@@ -6,6 +6,7 @@ import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.service.PostedStateStore;
 
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -48,6 +49,7 @@ public class DatabasePanel extends JPanel {
     private final MultiColumnSortSupport sortSupport = new MultiColumnSortSupport(table, sorter, 0);
     private final JComboBox<String> symbolFilterCombo = new JComboBox<>();
     private final JTextField titleSearchField = new JTextField(20);
+    private final JCheckBox flaggedOnlyFilterBox = new JCheckBox("フラグのみ");
     private List<String> symbolPriorityOrder = List.of();
     private ScreenshotDatabase database;
     private NotationChangeListener notationChangeListener;
@@ -61,11 +63,13 @@ public class DatabasePanel extends JPanel {
                 (LocalDateTime dateTime) -> dateTime,
                 Comparator.nullsLast(Comparator.naturalOrder())
         ));
-        sorter.setComparator(2, this::compareSymbols);
+        sorter.setComparator(3, this::compareSymbols);
         table.setRowSorter(sorter);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         table.getTableHeader().setDefaultRenderer(sortSupport.createHeaderRenderer());
 
+        table.getColumnModel().getColumn(1).setPreferredWidth(40);
+        table.getColumnModel().getColumn(1).setMaxWidth(48);
         table.getColumnModel().getColumn(0).setPreferredWidth(130);
         table.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
             @Override
@@ -77,13 +81,13 @@ public class DatabasePanel extends JPanel {
                 }
             }
         });
-        table.getColumnModel().getColumn(1).setPreferredWidth(220);
-        table.getColumnModel().getColumn(2).setPreferredWidth(50);
-        table.getColumnModel().getColumn(3).setPreferredWidth(60);
-        table.getColumnModel().getColumn(4).setPreferredWidth(50);
-        table.getColumnModel().getColumn(5).setPreferredWidth(120);
-        table.getColumnModel().getColumn(6).setPreferredWidth(100);
-        table.getColumnModel().getColumn(7).setPreferredWidth(90);
+        table.getColumnModel().getColumn(2).setPreferredWidth(220);
+        table.getColumnModel().getColumn(3).setPreferredWidth(50);
+        table.getColumnModel().getColumn(4).setPreferredWidth(60);
+        table.getColumnModel().getColumn(5).setPreferredWidth(50);
+        table.getColumnModel().getColumn(6).setPreferredWidth(120);
+        table.getColumnModel().getColumn(7).setPreferredWidth(100);
+        table.getColumnModel().getColumn(8).setPreferredWidth(90);
 
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && selectionListener != null) {
@@ -92,6 +96,7 @@ public class DatabasePanel extends JPanel {
         });
 
         symbolFilterCombo.addActionListener(e -> applyFilters());
+        flaggedOnlyFilterBox.addActionListener(e -> applyFilters());
         titleSearchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
@@ -114,6 +119,7 @@ public class DatabasePanel extends JPanel {
         filterPanel.add(symbolFilterCombo);
         filterPanel.add(new JLabel("曲名検索:"));
         filterPanel.add(titleSearchField);
+        filterPanel.add(flaggedOnlyFilterBox);
 
         add(filterPanel, BorderLayout.NORTH);
         add(new JScrollPane(table), BorderLayout.CENTER);
@@ -156,6 +162,28 @@ public class DatabasePanel extends JPanel {
 
     public int getSelectedCount() {
         return table.getSelectedRowCount();
+    }
+
+    public void selectAllFlagged() {
+        table.clearSelection();
+        ListSelectionModel selectionModel = table.getSelectionModel();
+        int selectedCount = 0;
+        for (int viewRow = 0; viewRow < table.getRowCount(); viewRow++) {
+            int modelRow = table.convertRowIndexToModel(viewRow);
+            if (tableModel.getRecordAt(modelRow).flagged()) {
+                selectionModel.addSelectionInterval(viewRow, viewRow);
+                selectedCount++;
+            }
+        }
+        if (selectionListener != null) {
+            selectionListener.onSelectionChanged(getSelectedEntries());
+        }
+        if (selectedCount == 0) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "フラグ付きのスクショがありません。",
+                    "選択",
+                    javax.swing.JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     public ScreenshotRecord getSelectedRecord() {
@@ -247,8 +275,9 @@ public class DatabasePanel extends JPanel {
         String titleQuery = titleSearchField.getText().trim().toLowerCase(Locale.ROOT);
         boolean symbolFilterActive = selectedSymbol != null && !FILTER_ALL.equals(selectedSymbol);
         boolean titleFilterActive = !titleQuery.isEmpty();
+        boolean flaggedFilterActive = flaggedOnlyFilterBox.isSelected();
 
-        if (!symbolFilterActive && !titleFilterActive) {
+        if (!symbolFilterActive && !titleFilterActive && !flaggedFilterActive) {
             sorter.setRowFilter(null);
             return;
         }
@@ -257,6 +286,9 @@ public class DatabasePanel extends JPanel {
             public boolean include(Entry<? extends DatabaseTableModel, ? extends Integer> entry) {
                 int modelIndex = entry.getIdentifier();
                 ScreenshotRecord record = tableModel.getRecordAt(modelIndex);
+                if (flaggedFilterActive && !record.flagged()) {
+                    return false;
+                }
                 if (symbolFilterActive && !selectedSymbol.equals(record.tableSymbol())) {
                     return false;
                 }
@@ -273,7 +305,7 @@ public class DatabasePanel extends JPanel {
 
     private class DatabaseTableModel extends AbstractTableModel {
         private final String[] columns = {
-                "日付", "タイトル", "記号", "レベル", "ランク", "ランプ", "投稿表記", "状態"
+                "日付", "★", "タイトル", "記号", "レベル", "ランク", "ランプ", "投稿表記", "状態"
         };
         private List<ScreenshotRecord> records = new ArrayList<>();
 
@@ -306,12 +338,15 @@ public class DatabasePanel extends JPanel {
             if (columnIndex == 0) {
                 return LocalDateTime.class;
             }
+            if (columnIndex == 1) {
+                return Boolean.class;
+            }
             return String.class;
         }
 
         @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex == 2 || columnIndex == 6;
+            return columnIndex == 1 || columnIndex == 3 || columnIndex == 7;
         }
 
         @Override
@@ -319,13 +354,14 @@ public class DatabasePanel extends JPanel {
             ScreenshotRecord record = records.get(rowIndex);
             return switch (columnIndex) {
                 case 0 -> record.capturedAt();
-                case 1 -> emptyToDash(record.title());
-                case 2 -> emptyToDash(record.tableSymbol());
-                case 3 -> emptyToDash(record.displayLevel());
-                case 4 -> emptyToDash(record.rank());
-                case 5 -> emptyToDash(record.clearType());
-                case 6 -> emptyToDash(record.postNotation());
-                case 7 -> formatState(record);
+                case 1 -> record.flagged();
+                case 2 -> emptyToDash(record.title());
+                case 3 -> emptyToDash(record.tableSymbol());
+                case 4 -> emptyToDash(record.displayLevel());
+                case 5 -> emptyToDash(record.rank());
+                case 6 -> emptyToDash(record.clearType());
+                case 7 -> emptyToDash(record.postNotation());
+                case 8 -> formatState(record);
                 default -> "";
             };
         }
@@ -339,10 +375,15 @@ public class DatabasePanel extends JPanel {
             String text = value == null ? "" : String.valueOf(value).trim();
 
             try {
-                if (columnIndex == 2) {
+                if (columnIndex == 1) {
+                    boolean flagged = value instanceof Boolean bool && bool;
+                    database.updateFlagged(record.id(), flagged);
+                } else if (columnIndex == 3) {
                     database.updateNotation(record.id(), text, record.postNotation());
-                } else if (columnIndex == 6) {
+                } else if (columnIndex == 7) {
                     database.updateNotation(record.id(), record.tableSymbol(), text);
+                } else {
+                    return;
                 }
                 reload(database);
                 if (notationChangeListener != null) {

@@ -3,14 +3,16 @@ package com.beatoraja.screenshot.ui;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 
 import javax.imageio.ImageIO;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
@@ -25,7 +27,9 @@ public class PreviewPanel extends JPanel {
     private static final String CARD_MULTI = "multi";
 
     private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
-    private final JPanel multiPreviewPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+    private static final int MULTI_PREVIEW_WIDTH = 440;
+
+    private final JPanel multiPreviewPanel = new JPanel();
     private final JScrollPane multiScrollPane = new JScrollPane(multiPreviewPanel);
     private final JPanel imageCards = new JPanel(new CardLayout());
     private final JTextArea messageArea = new JTextArea(3, 40);
@@ -35,9 +39,10 @@ public class PreviewPanel extends JPanel {
         setLayout(new BorderLayout());
 
         imageScrollPane.setPreferredSize(new Dimension(480, 400));
+        multiPreviewPanel.setLayout(new BoxLayout(multiPreviewPanel, BoxLayout.Y_AXIS));
         multiScrollPane.setPreferredSize(new Dimension(480, 400));
+        multiScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         multiScrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        multiScrollPane.getHorizontalScrollBar().setUnitIncrement(16);
 
         imageCards.add(imageScrollPane, CARD_SINGLE);
         imageCards.add(multiScrollPane, CARD_MULTI);
@@ -76,11 +81,17 @@ public class PreviewPanel extends JPanel {
             imageLabel.setIcon(loadScaledImage(entries.get(0), 900, 500));
         } else {
             showImageCard(CARD_MULTI);
-            for (ScreenshotEntry entry : entries) {
-                JLabel thumb = new JLabel(loadScaledImage(entry, 240, 135));
+            for (int i = 0; i < entries.size(); i++) {
+                ScreenshotEntry entry = entries.get(i);
+                JLabel thumb = new JLabel(loadScaledImage(entry, MULTI_PREVIEW_WIDTH, 900));
                 thumb.setToolTipText(entry.getFileName());
+                thumb.setAlignmentX(Component.LEFT_ALIGNMENT);
                 multiPreviewPanel.add(thumb);
+                if (i < entries.size() - 1) {
+                    multiPreviewPanel.add(Box.createVerticalStrut(8));
+                }
             }
+            multiPreviewPanel.add(Box.createVerticalGlue());
         }
 
         revalidate();
