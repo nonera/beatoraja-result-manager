@@ -5,6 +5,7 @@ import com.beatoraja.screenshot.model.ScreenshotEntry;
 import javax.imageio.ImageIO;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -23,8 +24,16 @@ import javax.swing.JSplitPane;
 
 public class PreviewPanel extends JPanel {
 
+    public interface PostOrderChangeListener {
+        void onMoveUp(int index);
+
+        void onMoveDown(int index);
+    }
+
     private static final String CARD_SINGLE = "single";
     private static final String CARD_MULTI = "multi";
+
+    private PostOrderChangeListener postOrderChangeListener;
 
     private final JLabel imageLabel = new JLabel("画像を選択してください", JLabel.CENTER);
     private static final int MULTI_PREVIEW_WIDTH = 440;
@@ -58,6 +67,10 @@ public class PreviewPanel extends JPanel {
         add(splitPane, BorderLayout.CENTER);
     }
 
+    public void setPostOrderChangeListener(PostOrderChangeListener listener) {
+        this.postOrderChangeListener = listener;
+    }
+
     public void showEntries(List<ScreenshotEntry> entries, String message) {
         messageArea.setText(message == null ? "" : message);
         multiPreviewPanel.removeAll();
@@ -81,12 +94,14 @@ public class PreviewPanel extends JPanel {
             imageLabel.setIcon(loadScaledImage(entries.get(0), 900, 500));
         } else {
             showImageCard(CARD_MULTI);
+            JLabel orderHint = new JLabel("投稿順 (↑↓で変更)");
+            orderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+            multiPreviewPanel.add(orderHint);
+            multiPreviewPanel.add(Box.createVerticalStrut(4));
+
             for (int i = 0; i < entries.size(); i++) {
                 ScreenshotEntry entry = entries.get(i);
-                JLabel thumb = new JLabel(loadScaledImage(entry, MULTI_PREVIEW_WIDTH, 900));
-                thumb.setToolTipText(entry.getFileName());
-                thumb.setAlignmentX(Component.LEFT_ALIGNMENT);
-                multiPreviewPanel.add(thumb);
+                multiPreviewPanel.add(buildMultiPreviewRow(entries, entry, i));
                 if (i < entries.size() - 1) {
                     multiPreviewPanel.add(Box.createVerticalStrut(8));
                 }
@@ -100,6 +115,47 @@ public class PreviewPanel extends JPanel {
 
     public String getMessage() {
         return messageArea.getText();
+    }
+
+    private JPanel buildMultiPreviewRow(List<ScreenshotEntry> entries, ScreenshotEntry entry, int index) {
+        JPanel row = new JPanel(new BorderLayout(6, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+        JPanel controls = new JPanel();
+        controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
+        JLabel orderLabel = new JLabel((index + 1) + ".");
+        orderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        controls.add(orderLabel);
+
+        JButton upButton = new JButton("↑");
+        upButton.setMargin(new java.awt.Insets(0, 4, 0, 4));
+        upButton.setEnabled(index > 0);
+        upButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        upButton.addActionListener(e -> {
+            if (postOrderChangeListener != null) {
+                postOrderChangeListener.onMoveUp(index);
+            }
+        });
+        controls.add(upButton);
+
+        JButton downButton = new JButton("↓");
+        downButton.setMargin(new java.awt.Insets(0, 4, 0, 4));
+        downButton.setEnabled(index < entries.size() - 1);
+        downButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        downButton.addActionListener(e -> {
+            if (postOrderChangeListener != null) {
+                postOrderChangeListener.onMoveDown(index);
+            }
+        });
+        controls.add(downButton);
+
+        JLabel thumb = new JLabel(loadScaledImage(entry, MULTI_PREVIEW_WIDTH, 900));
+        thumb.setToolTipText(entry.getFileName());
+
+        row.add(controls, BorderLayout.WEST);
+        row.add(thumb, BorderLayout.CENTER);
+        return row;
     }
 
     private void showImageCard(String card) {

@@ -44,18 +44,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class MainFrame extends JFrame {
-
-    /** Twitter 投稿は UI 自動化の不安定さのため一時停止中。 */
-    private static final boolean TWITTER_POST_FROZEN = true;
-    private static final String TWITTER_POST_FROZEN_MESSAGE =
-            "Twitter 投稿機能は現在停止中です。\n"
-                    + "Discord への分割送信は引き続き利用できます。";
 
     private static final Logger LOG = AppLogging.get(MainFrame.class);
 
@@ -69,6 +66,7 @@ public class MainFrame extends JFrame {
 
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
+    private final List<ScreenshotEntry> postOrderEntries = new ArrayList<>();
     private final JLabel statusLabel = new JLabel("準備中...");
     private final JProgressBar indexProgressBar = new JProgressBar();
     private final JComboBox<AppConfig.DiscordWebhookEntry> discordWebhookCombo = new JComboBox<>();
@@ -85,6 +83,17 @@ public class MainFrame extends JFrame {
         initDatabase();
         reloadTableRegistry();
         buildUi();
+        previewPanel.setPostOrderChangeListener(new PreviewPanel.PostOrderChangeListener() {
+            @Override
+            public void onMoveUp(int index) {
+                movePostOrderEntry(index, index - 1);
+            }
+
+            @Override
+            public void onMoveDown(int index) {
+                movePostOrderEntry(index, index + 1);
+            }
+        });
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
@@ -213,17 +222,63 @@ public class MainFrame extends JFrame {
     }
 
     private void onSelectionChanged(List<ScreenshotEntry> selectedEntries) {
-        List<String> postNotations = resolvePostNotations(selectedEntries);
-        String message = TweetTextGenerator.generate(selectedEntries, postNotations);
-        previewPanel.showEntries(selectedEntries, message);
-        updateActionButtons(selectedEntries.size());
-        statusLabel.setText(selectedEntries.isEmpty()
+        syncPostOrder(selectedEntries);
+        refreshPostPreview();
+        updateActionButtons(postOrderEntries.size());
+        statusLabel.setText(postOrderEntries.isEmpty()
                 ? "画像を選択してください"
-                : selectedEntries.size() + "枚選択中");
+                : postOrderEntries.size() + "枚選択中");
     }
 
     private void refreshSelectedTweetText() {
-        onSelectionChanged(databasePanel.getSelectedEntries());
+        syncPostOrder(databasePanel.getSelectedEntries());
+        refreshPostPreview();
+    }
+
+    private void syncPostOrder(List<ScreenshotEntry> newlySelected) {
+        if (newlySelected == null || newlySelected.isEmpty()) {
+            postOrderEntries.clear();
+            return;
+        }
+
+        Set<String> selectedNames = new HashSet<>();
+        for (ScreenshotEntry entry : newlySelected) {
+            selectedNames.add(entry.getFileName());
+        }
+
+        List<ScreenshotEntry> kept = new ArrayList<>();
+        for (ScreenshotEntry entry : postOrderEntries) {
+            if (selectedNames.contains(entry.getFileName())) {
+                kept.add(entry);
+            }
+        }
+
+        Set<String> keptNames = new HashSet<>();
+        for (ScreenshotEntry entry : kept) {
+            keptNames.add(entry.getFileName());
+        }
+        for (ScreenshotEntry entry : newlySelected) {
+            if (!keptNames.contains(entry.getFileName())) {
+                kept.add(entry);
+            }
+        }
+
+        postOrderEntries.clear();
+        postOrderEntries.addAll(kept);
+    }
+
+    private void refreshPostPreview() {
+        List<String> postNotations = resolvePostNotations(postOrderEntries);
+        String message = TweetTextGenerator.generate(postOrderEntries, postNotations);
+        previewPanel.showEntries(postOrderEntries, message);
+    }
+
+    private void movePostOrderEntry(int fromIndex, int toIndex) {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= postOrderEntries.size() || toIndex >= postOrderEntries.size()) {
+            return;
+        }
+        Collections.swap(postOrderEntries, fromIndex, toIndex);
+        refreshPostPreview();
     }
 
     private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
@@ -256,13 +311,10 @@ public class MainFrame extends JFrame {
     }
 
     private void updateActionButtons(int selectedCount) {
-        if (TWITTER_POST_FROZEN) {
-            twitterButton.setEnabled(false);
-            twitterButton.setToolTipText("Twitter 投稿機能は現在停止中です");
-        } else {
-            twitterButton.setEnabled(selectedCount >= 1 && selectedCount <= 4);
-            twitterButton.setToolTipText(selectedCount > 4 ? "Twitter は最大4枚まで" : null);
-        }
+        twitterButton.setEnabled(selectedCount >= 1);
+        twitterButton.setToolTipText(selectedCount > 4
+                ? "5枚以上は4枚ずつ別ツイートとして順番に投稿します"
+                : null);
         discordButton.setEnabled(selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
         discordButton.setToolTipText(selectedCount > 10
                 ? "11枚以上は10枚ずつ分割送信します"
@@ -446,17 +498,8 @@ public class MainFrame extends JFrame {
     }
 
     private void postToTwitter() {
-        if (TWITTER_POST_FROZEN) {
-            JOptionPane.showMessageDialog(this, TWITTER_POST_FROZEN_MESSAGE, "Twitter 投稿", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-
-        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
-            return;
-        }
-        if (selected.size() > 4) {
-            JOptionPane.showMessageDialog(this, "Twitter は最大4枚まで投稿できます。", "制限", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -471,33 +514,67 @@ public class MainFrame extends JFrame {
         }
 
         setPostingEnabled(false);
-        List<String> notations = resolvePostNotations(selected);
-        String text = TweetTextGenerator.generate(selected, notations);
-        List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
-        statusLabel.setText("ブラウザで投稿画面を開いています...");
-        LOG.info("Twitter manual post started: " + selected.size() + " image(s)");
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 4);
+        statusLabel.setText("Twitter 投稿 (0/" + batches.size() + ")");
+        LOG.info("Twitter manual post started: " + selected.size() + " image(s), "
+                + batches.size() + " batch(es)");
 
         new Thread(() -> {
             ClixService clixService = new ClixService(config);
-            ClixService.PostResult result = clixService.post(text, imagePaths);
+            List<ScreenshotEntry> postedEntries = new ArrayList<>();
+            String lastError = null;
+            for (int i = 0; i < batches.size(); i++) {
+                List<ScreenshotEntry> batch = batches.get(i);
+                int batchNumber = i + 1;
+                SwingUtilities.invokeLater(() ->
+                        statusLabel.setText("Twitter 投稿 (" + batchNumber + "/" + batches.size()
+                                + ") — ブラウザで投稿してください..."));
+                List<String> notations = resolvePostNotations(batch);
+                String text = TweetTextGenerator.generate(batch, notations);
+                List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+                ClixService.PostResult result = clixService.post(text, imagePaths);
+                if (result.success()) {
+                    postedEntries.addAll(batch);
+                } else {
+                    lastError = result.message();
+                    break;
+                }
+            }
+
+            List<ScreenshotEntry> postedSnapshot = List.copyOf(postedEntries);
+            String errorMessage = lastError;
+            int batchCount = batches.size();
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
-                if (result.success()) {
-                    LOG.info("Twitter manual post succeeded");
-                    for (ScreenshotEntry entry : selected) {
-                        postedStateStore.markTwitterPosted(entry.getFileName(), result.tweetId());
+                if (errorMessage == null) {
+                    LOG.info("Twitter manual post succeeded: " + postedSnapshot.size() + " image(s)");
+                    for (ScreenshotEntry entry : postedSnapshot) {
+                        postedStateStore.markTwitterPosted(entry.getFileName(), "");
                     }
                     savePostedStateQuietly();
                     databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Twitter 投稿完了");
-                    JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
+                    String completionMessage = batchCount > 1
+                            ? batchCount + " 件のツイート投稿が完了しました。"
+                            : "Twitter に投稿しました。";
+                    JOptionPane.showMessageDialog(this, completionMessage, "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Twitter 投稿失敗");
-                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(result.message()));
-                    if (result.message().contains("ログイン") || result.message().contains("認証")) {
+                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(errorMessage));
+                    if (!postedSnapshot.isEmpty()) {
+                        for (ScreenshotEntry entry : postedSnapshot) {
+                            postedStateStore.markTwitterPosted(entry.getFileName(), "");
+                        }
+                        savePostedStateQuietly();
+                        databasePanel.setPostedStateStore(postedStateStore);
+                    }
+                    String message = postedSnapshot.isEmpty()
+                            ? errorMessage
+                            : postedSnapshot.size() + " 枚までは投稿済みです。\n" + errorMessage;
+                    if (errorMessage.contains("ログイン") || errorMessage.contains("認証")) {
                         int answer = JOptionPane.showConfirmDialog(
                                 this,
-                                result.message() + "\n\nTwitter に再ログインしますか？",
+                                message + "\n\nTwitter に再ログインしますか？",
                                 "Twitter 投稿失敗",
                                 JOptionPane.YES_NO_OPTION
                         );
@@ -506,7 +583,7 @@ public class MainFrame extends JFrame {
                             loginDialog.showAndLogin();
                         }
                     } else {
-                        JOptionPane.showMessageDialog(this, result.message(), "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(this, message, "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
                     }
                 }
             });
@@ -514,7 +591,7 @@ public class MainFrame extends JFrame {
     }
 
     private void postToDiscord() {
-        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
             return;
         }
@@ -600,9 +677,7 @@ public class MainFrame extends JFrame {
 
     private void setPostingEnabled(boolean enabled) {
         int selectedCount = databasePanel.getSelectedCount();
-        if (!TWITTER_POST_FROZEN) {
-            twitterButton.setEnabled(enabled && selectedCount >= 1 && selectedCount <= 4);
-        }
+        twitterButton.setEnabled(enabled && selectedCount >= 1);
         discordButton.setEnabled(enabled && selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
     }
 
