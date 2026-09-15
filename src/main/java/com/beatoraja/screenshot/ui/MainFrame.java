@@ -149,6 +149,23 @@ public class MainFrame extends JFrame {
         tableNotationRulesItem.addActionListener(e -> openTableNotationRulesDialog());
         settingsMenu.add(tableNotationRulesItem);
         menuBar.add(settingsMenu);
+
+        JMenu helpMenu = new JMenu("ヘルプ");
+        JMenuItem usageItem = new JMenuItem("使い方...");
+        usageItem.addActionListener(e -> HelpDialog.showUsage(this));
+        helpMenu.add(usageItem);
+        JMenuItem openLogsItem = new JMenuItem("ログフォルダを開く");
+        openLogsItem.addActionListener(e -> HelpDialog.openLogFolder(this));
+        helpMenu.add(openLogsItem);
+        JMenuItem repositoryItem = new JMenuItem("GitHub リポジトリ");
+        repositoryItem.addActionListener(e -> HelpDialog.openRepository(this));
+        helpMenu.add(repositoryItem);
+        helpMenu.addSeparator();
+        JMenuItem aboutItem = new JMenuItem("バージョン情報...");
+        aboutItem.addActionListener(e -> HelpDialog.showAbout(this));
+        helpMenu.add(aboutItem);
+        menuBar.add(helpMenu);
+
         setJMenuBar(menuBar);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
