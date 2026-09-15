@@ -7,6 +7,7 @@ import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
@@ -14,8 +15,10 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.AbstractTableModel;
 import java.awt.BorderLayout;
@@ -41,6 +44,10 @@ public class SettingsDialog extends JDialog {
     private final JComboBox<String> playerNameCombo = new JComboBox<>();
     private final JLabel twitterStatusLabel = new JLabel("未確認");
     private final WebhookTableModel webhookTableModel = new WebhookTableModel();
+    private final JCheckBox discordAutoPostEnabledBox = new JCheckBox("有効");
+    private final JSpinner discordAutoPostBatchSpinner = new JSpinner(
+            new SpinnerNumberModel(4, 1, 10, 1));
+    private final JComboBox<String> discordAutoPostWebhookCombo = new JComboBox<>();
 
     public SettingsDialog(Frame owner, AppConfig config, SaveListener listener) {
         super(owner, "設定", true);
@@ -49,7 +56,7 @@ public class SettingsDialog extends JDialog {
         buildUi();
         loadValues();
         refreshTwitterStatusQuietly();
-        setSize(760, 620);
+        setSize(760, 720);
         setLocationRelativeTo(owner);
     }
 
@@ -141,7 +148,6 @@ public class SettingsDialog extends JDialog {
         webhookTable.getColumnModel().getColumn(1).setPreferredWidth(480);
         JScrollPane webhookScroll = new JScrollPane(webhookTable);
         webhookScroll.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord Webhook"));
-        root.add(webhookScroll, BorderLayout.CENTER);
 
         JPanel webhookActions = new JPanel();
         JButton addWebhook = new JButton("追加");
@@ -157,6 +163,47 @@ public class SettingsDialog extends JDialog {
         webhookActions.add(removeWebhook);
         root.add(webhookActions, BorderLayout.EAST);
 
+        JPanel discordAutoPanel = new JPanel(new GridBagLayout());
+        discordAutoPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord 自動投稿"));
+        GridBagConstraints autoGbc = new GridBagConstraints();
+        autoGbc.insets = new Insets(6, 6, 6, 6);
+        autoGbc.fill = GridBagConstraints.HORIZONTAL;
+        autoGbc.weightx = 1.0;
+
+        autoGbc.gridx = 0;
+        autoGbc.gridy = 0;
+        autoGbc.weightx = 0;
+        discordAutoPanel.add(new JLabel("自動投稿"), autoGbc);
+        autoGbc.gridx = 1;
+        autoGbc.weightx = 1.0;
+        discordAutoPanel.add(discordAutoPostEnabledBox, autoGbc);
+
+        autoGbc.gridx = 0;
+        autoGbc.gridy++;
+        autoGbc.weightx = 0;
+        discordAutoPanel.add(new JLabel("投稿枚数"), autoGbc);
+        autoGbc.gridx = 1;
+        autoGbc.weightx = 1.0;
+        discordAutoPanel.add(discordAutoPostBatchSpinner, autoGbc);
+
+        autoGbc.gridx = 0;
+        autoGbc.gridy++;
+        autoGbc.weightx = 0;
+        discordAutoPanel.add(new JLabel("送信先 Webhook"), autoGbc);
+        autoGbc.gridx = 1;
+        autoGbc.weightx = 1.0;
+        discordAutoPanel.add(discordAutoPostWebhookCombo, autoGbc);
+
+        autoGbc.gridx = 0;
+        autoGbc.gridy++;
+        autoGbc.gridwidth = 2;
+        discordAutoPanel.add(new JLabel("リザルト（Result）の未投稿スクショが設定枚数に達したら自動送信します（1〜10枚）"), autoGbc);
+
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+        centerPanel.add(webhookScroll, BorderLayout.CENTER);
+        centerPanel.add(discordAutoPanel, BorderLayout.SOUTH);
+        root.add(centerPanel, BorderLayout.CENTER);
+
         JPanel bottom = new JPanel(new BorderLayout());
         JButton save = new JButton("保存");
         save.addActionListener(e -> saveSettings());
@@ -170,9 +217,25 @@ public class SettingsDialog extends JDialog {
         screenshotDirField.setText(config.getScreenshotDirectory());
         beatorajaDirField.setText(config.getBeatorajaDirectory());
         webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
+        discordAutoPostEnabledBox.setSelected(config.isDiscordAutoPostEnabled());
+        discordAutoPostBatchSpinner.setValue(config.getDiscordAutoPostBatchSize());
+        reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
         twitterStatusLabel.setText(config.hasManualTwitterAuth() ? "ログイン情報あり（未確認）" : "未ログイン");
         refreshPlayerNames();
         playerNameCombo.getEditor().setItem(config.getPlayerName());
+    }
+
+    private void reloadDiscordAutoPostWebhookChoices(String selectedName) {
+        discordAutoPostWebhookCombo.removeAllItems();
+        discordAutoPostWebhookCombo.addItem("");
+        for (AppConfig.DiscordWebhookEntry entry : webhookTableModel.getRows()) {
+            if (entry.getUrl() != null && !entry.getUrl().isBlank()) {
+                discordAutoPostWebhookCombo.addItem(entry.getName());
+            }
+        }
+        if (selectedName != null && !selectedName.isBlank()) {
+            discordAutoPostWebhookCombo.setSelectedItem(selectedName);
+        }
     }
 
     private void refreshPlayerNames() {
@@ -258,6 +321,14 @@ public class SettingsDialog extends JDialog {
         String playerName = String.valueOf(playerNameCombo.getEditor().getItem()).trim();
         config.setPlayerName(playerName);
         config.setDiscordWebhooks(webhookTableModel.getRows());
+        String currentWebhookName = discordAutoPostWebhookCombo.getSelectedItem() == null
+                ? ""
+                : String.valueOf(discordAutoPostWebhookCombo.getSelectedItem()).trim();
+        reloadDiscordAutoPostWebhookChoices(currentWebhookName);
+        config.setDiscordAutoPostEnabled(discordAutoPostEnabledBox.isSelected());
+        config.setDiscordAutoPostBatchSize((Integer) discordAutoPostBatchSpinner.getValue());
+        Object selectedWebhook = discordAutoPostWebhookCombo.getSelectedItem();
+        config.setDiscordAutoPostWebhookName(selectedWebhook == null ? "" : String.valueOf(selectedWebhook).trim());
         config.setFirstRunCompleted(true);
 
         try {

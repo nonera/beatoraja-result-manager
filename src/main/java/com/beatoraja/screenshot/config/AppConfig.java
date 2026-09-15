@@ -26,6 +26,9 @@ public class AppConfig {
     private String beatorajaDirectory = "";
     private String playerName = "";
     private List<DiscordWebhookEntry> discordWebhooks = new ArrayList<>();
+    private boolean discordAutoPostEnabled;
+    private int discordAutoPostBatchSize = 4;
+    private String discordAutoPostWebhookName = "";
     private List<String> tablePriorityOrder = new ArrayList<>();
     private List<TableNotationRule> tableNotationRules = new ArrayList<>();
     private String twitterBrowser = "";
@@ -103,6 +106,53 @@ public class AppConfig {
 
     public void setDiscordWebhooks(List<DiscordWebhookEntry> discordWebhooks) {
         this.discordWebhooks = discordWebhooks == null ? new ArrayList<>() : discordWebhooks;
+    }
+
+    public boolean isDiscordAutoPostEnabled() {
+        return discordAutoPostEnabled;
+    }
+
+    public void setDiscordAutoPostEnabled(boolean discordAutoPostEnabled) {
+        this.discordAutoPostEnabled = discordAutoPostEnabled;
+    }
+
+    public int getDiscordAutoPostBatchSize() {
+        return discordAutoPostBatchSize;
+    }
+
+    public void setDiscordAutoPostBatchSize(int discordAutoPostBatchSize) {
+        if (discordAutoPostBatchSize < 1) {
+            this.discordAutoPostBatchSize = 1;
+        } else if (discordAutoPostBatchSize > 10) {
+            this.discordAutoPostBatchSize = 10;
+        } else {
+            this.discordAutoPostBatchSize = discordAutoPostBatchSize;
+        }
+    }
+
+    public String getDiscordAutoPostWebhookName() {
+        return discordAutoPostWebhookName;
+    }
+
+    public void setDiscordAutoPostWebhookName(String discordAutoPostWebhookName) {
+        this.discordAutoPostWebhookName = discordAutoPostWebhookName == null ? "" : discordAutoPostWebhookName;
+    }
+
+    public DiscordWebhookEntry resolveDiscordAutoPostWebhook() {
+        if (discordAutoPostWebhookName != null && !discordAutoPostWebhookName.isBlank()) {
+            for (DiscordWebhookEntry entry : discordWebhooks) {
+                if (discordAutoPostWebhookName.equals(entry.getName())
+                        && entry.getUrl() != null && !entry.getUrl().isBlank()) {
+                    return entry;
+                }
+            }
+        }
+        for (DiscordWebhookEntry entry : discordWebhooks) {
+            if (entry.getUrl() != null && !entry.getUrl().isBlank()) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     public List<String> getTablePriorityOrder() {

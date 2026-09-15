@@ -4,6 +4,7 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
 import com.beatoraja.screenshot.service.PostedStateStore;
 import com.beatoraja.screenshot.service.ScreenshotScanner;
@@ -46,6 +47,8 @@ public class MainFrame extends JFrame {
     private ScreenshotWatcher screenshotWatcher;
     private ScreenshotDatabase screenshotDatabase;
     private final ChartResolverService chartResolverService = new ChartResolverService();
+    private final DiscordAutoPostQueue discordAutoPostQueue = new DiscordAutoPostQueue();
+    private volatile boolean discordAutoPostInProgress;
 
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
@@ -324,13 +327,75 @@ public class MainFrame extends JFrame {
         Path screenshotDir = Path.of(config.getScreenshotDirectory());
         screenshotWatcher = new ScreenshotWatcher();
         try {
-            screenshotWatcher.start(screenshotDir, entry -> SwingUtilities.invokeLater(() -> {
-                syncDatabaseEntry(entry);
-                statusLabel.setText("新しいスクショを検出しました");
-            }));
+            screenshotWatcher.start(screenshotDir, entry -> SwingUtilities.invokeLater(() -> onScreenshotDetected(entry)));
         } catch (IOException e) {
             statusLabel.setText("フォルダ監視を開始できませんでした");
         }
+    }
+
+    private void onScreenshotDetected(ScreenshotEntry entry) {
+        syncDatabaseEntry(entry);
+        discordAutoPostQueue.offer(entry, postedStateStore);
+        tryAutoPostDiscord();
+        statusLabel.setText("新しいスクショを検出しました");
+    }
+
+    private void tryAutoPostDiscord() {
+        if (discordAutoPostInProgress || !config.isDiscordAutoPostEnabled()) {
+            return;
+        }
+        AppConfig.DiscordWebhookEntry webhook = config.resolveDiscordAutoPostWebhook();
+        if (webhook == null || webhook.getUrl() == null || webhook.getUrl().isBlank()) {
+            return;
+        }
+        int batchSize = config.getDiscordAutoPostBatchSize();
+        if (discordAutoPostQueue.size() < batchSize) {
+            return;
+        }
+
+        List<ScreenshotEntry> batch = discordAutoPostQueue.pollBatch(batchSize);
+        if (batch.isEmpty()) {
+            return;
+        }
+
+        discordAutoPostInProgress = true;
+        new Thread(() -> {
+            AutoDiscordPostResult result = postDiscordBatch(batch, webhook);
+            SwingUtilities.invokeLater(() -> {
+                discordAutoPostInProgress = false;
+                if (!result.failedEntries().isEmpty()) {
+                    discordAutoPostQueue.requeueFront(result.failedEntries());
+                }
+                if (result.postedCount() > 0) {
+                    savePostedStateQuietly();
+                    databasePanel.setPostedStateStore(postedStateStore);
+                    statusLabel.setText("Discord 自動投稿: " + result.postedCount() + " 枚送信");
+                } else if (result.errorMessage() != null) {
+                    statusLabel.setText("Discord 自動投稿失敗: " + result.errorMessage());
+                }
+                tryAutoPostDiscord();
+            });
+        }, "discord-auto-post").start();
+    }
+
+    private AutoDiscordPostResult postDiscordBatch(List<ScreenshotEntry> entries,
+            AppConfig.DiscordWebhookEntry webhook) {
+        List<String> notations = resolvePostNotations(entries);
+        String message = TweetTextGenerator.generate(entries, notations);
+        List<Path> imagePaths = entries.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+
+        DiscordWebhookService discordWebhookService = new DiscordWebhookService();
+        DiscordWebhookService.PostResult result = discordWebhookService.post(webhook.getUrl(), message, imagePaths);
+        if (result.success()) {
+            for (ScreenshotEntry entry : entries) {
+                postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
+            }
+            return new AutoDiscordPostResult(entries.size(), List.of(), null);
+        }
+        return new AutoDiscordPostResult(0, entries, result.message());
+    }
+
+    private record AutoDiscordPostResult(int postedCount, List<ScreenshotEntry> failedEntries, String errorMessage) {
     }
 
     private void postToTwitter() {

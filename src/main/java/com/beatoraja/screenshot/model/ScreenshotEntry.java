@@ -84,6 +84,10 @@ public class ScreenshotEntry {
         return rawTableFolder.isBlank() && !level.isBlank();
     }
 
+    public boolean isResultScreenshot() {
+        return "Result".equals(stateLabel);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
