@@ -13,7 +13,6 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -81,25 +80,28 @@ public class PreviewPanel extends JPanel {
 
         add(buildHeaderCard(), BorderLayout.NORTH);
 
-        imageCanvas.setPreferredSize(new Dimension(480, 400));
+        imageCanvas.setPreferredSize(new Dimension(480, 320));
         multiPreviewPanel.setLayout(new BoxLayout(multiPreviewPanel, BoxLayout.Y_AXIS));
         multiPreviewPanel.setOpaque(false);
-        multiScrollPane.setPreferredSize(new Dimension(480, 400));
+        multiScrollPane.setPreferredSize(new Dimension(480, 480));
         multiScrollPane.setBorder(new EmptyBorder(0, 0, 0, 0));
         multiScrollPane.setOpaque(false);
         multiScrollPane.getViewport().setOpaque(false);
         multiScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         multiScrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
-        imageCards.setOpaque(false);
-        imageCards.add(imageCanvas, CARD_SINGLE);
-        imageCards.add(multiScrollPane, CARD_MULTI);
+        // The message card only applies to the single-image case, where there is exactly one
+        // caption; with multiple images each row in multiPreviewPanel has its own field instead,
+        // so it is bundled into the single card rather than shown as an always-visible split pane.
+        JPanel singleCard = new JPanel(new BorderLayout(0, 8));
+        singleCard.setOpaque(false);
+        singleCard.add(imageCanvas, BorderLayout.CENTER);
+        singleCard.add(buildMessageCard(), BorderLayout.SOUTH);
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, imageCards, buildMessageCard());
-        splitPane.setResizeWeight(1.0);
-        splitPane.setContinuousLayout(true);
-        splitPane.setBorder(null);
-        add(splitPane, BorderLayout.CENTER);
+        imageCards.setOpaque(false);
+        imageCards.add(singleCard, CARD_SINGLE);
+        imageCards.add(multiScrollPane, CARD_MULTI);
+        add(imageCards, BorderLayout.CENTER);
 
         updateMessageCount();
     }
