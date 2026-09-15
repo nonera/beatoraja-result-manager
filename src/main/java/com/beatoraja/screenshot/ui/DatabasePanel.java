@@ -1,9 +1,19 @@
 package com.beatoraja.screenshot.ui;
 
+import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.service.PostedStateStore;
+import com.beatoraja.screenshot.ui.render.BadgeCellRenderer;
+import com.beatoraja.screenshot.ui.render.CapturedAtCellRenderer;
+import com.beatoraja.screenshot.ui.render.StateCell;
+import com.beatoraja.screenshot.ui.render.StateCellRenderer;
+import com.beatoraja.screenshot.ui.render.ThumbnailCache;
+import com.beatoraja.screenshot.ui.render.ThumbnailCellRenderer;
+import com.beatoraja.screenshot.ui.theme.Badge;
+import com.beatoraja.screenshot.ui.theme.ResultPalette;
+import com.beatoraja.screenshot.ui.theme.UiTheme;
 
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JCheckBox;
@@ -15,13 +25,20 @@ import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
+import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.FlowLayout;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -35,6 +52,20 @@ public class DatabasePanel extends JPanel {
 
     private static final String FILTER_ALL = "すべて";
 
+    private static final int COL_THUMBNAIL = 0;
+    private static final int COL_CAPTURED_AT = 1;
+    private static final int COL_FLAG = 2;
+    private static final int COL_TITLE = 3;
+    private static final int COL_SYMBOL = 4;
+    private static final int COL_LEVEL = 5;
+    private static final int COL_RANK = 6;
+    private static final int COL_LAMP = 7;
+    private static final int COL_NOTATION = 8;
+    private static final int COL_STATE = 9;
+
+    private static final int THUMBNAIL_WIDTH = 72;
+    private static final int THUMBNAIL_HEIGHT = 40;
+
     public interface NotationChangeListener {
         void onNotationChanged();
     }
@@ -44,12 +75,17 @@ public class DatabasePanel extends JPanel {
     }
 
     private final DatabaseTableModel tableModel = new DatabaseTableModel();
-    private final JTable table = new JTable(tableModel);
+    private final JTable table = new StripedTable(tableModel);
     private final TableRowSorter<DatabaseTableModel> sorter = new TableRowSorter<>(tableModel);
-    private final MultiColumnSortSupport sortSupport = new MultiColumnSortSupport(table, sorter, 0);
+    private final MultiColumnSortSupport sortSupport =
+            new MultiColumnSortSupport(table, sorter, COL_CAPTURED_AT);
+    private final ThumbnailCache thumbnailCache =
+            new ThumbnailCache(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, this::repaintTable);
     private final JComboBox<String> symbolFilterCombo = new JComboBox<>();
     private final JTextField titleSearchField = new JTextField(20);
     private final JCheckBox flaggedOnlyFilterBox = new JCheckBox("フラグのみ");
+    private final JCheckBox thumbnailVisibleBox = new JCheckBox("サムネイル", true);
+    private final JLabel rowCountLabel = new JLabel();
     private List<String> symbolPriorityOrder = List.of();
     private ScreenshotDatabase database;
     private NotationChangeListener notationChangeListener;
@@ -57,37 +93,22 @@ public class DatabasePanel extends JPanel {
     private PostedStateStore postedStateStore;
 
     public DatabasePanel() {
-        setLayout(new BorderLayout(8, 8));
+        setLayout(new BorderLayout(0, 0));
 
-        sorter.setComparator(0, Comparator.comparing(
+        sorter.setComparator(COL_CAPTURED_AT, Comparator.comparing(
                 (LocalDateTime dateTime) -> dateTime,
                 Comparator.nullsLast(Comparator.naturalOrder())
         ));
-        sorter.setComparator(3, this::compareSymbols);
+        sorter.setComparator(COL_SYMBOL, this::compareSymbols);
+        sorter.setSortable(COL_THUMBNAIL, false);
         table.setRowSorter(sorter);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        table.setFillsViewportHeight(true);
+        table.setShowGrid(false);
+        table.setRowHeight(rowHeight(true));
         table.getTableHeader().setDefaultRenderer(sortSupport.createHeaderRenderer());
 
-        table.getColumnModel().getColumn(1).setPreferredWidth(40);
-        table.getColumnModel().getColumn(1).setMaxWidth(48);
-        table.getColumnModel().getColumn(0).setPreferredWidth(130);
-        table.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
-            @Override
-            protected void setValue(Object value) {
-                if (value instanceof LocalDateTime dateTime) {
-                    setText(ScreenshotDatabase.formatDate(dateTime));
-                } else {
-                    super.setValue(value);
-                }
-            }
-        });
-        table.getColumnModel().getColumn(2).setPreferredWidth(220);
-        table.getColumnModel().getColumn(3).setPreferredWidth(50);
-        table.getColumnModel().getColumn(4).setPreferredWidth(60);
-        table.getColumnModel().getColumn(5).setPreferredWidth(50);
-        table.getColumnModel().getColumn(6).setPreferredWidth(120);
-        table.getColumnModel().getColumn(7).setPreferredWidth(100);
-        table.getColumnModel().getColumn(8).setPreferredWidth(90);
+        configureColumns();
 
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && selectionListener != null) {
@@ -97,6 +118,9 @@ public class DatabasePanel extends JPanel {
 
         symbolFilterCombo.addActionListener(e -> applyFilters());
         flaggedOnlyFilterBox.addActionListener(e -> applyFilters());
+        thumbnailVisibleBox.addActionListener(e -> applyThumbnailVisibility());
+        titleSearchField.putClientProperty("JTextField.placeholderText", "曲名で絞り込み");
+        titleSearchField.putClientProperty("JTextField.showClearButton", true);
         titleSearchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
@@ -114,15 +138,125 @@ public class DatabasePanel extends JPanel {
             }
         });
 
-        JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        filterPanel.add(new JLabel("記号:"));
-        filterPanel.add(symbolFilterCombo);
-        filterPanel.add(new JLabel("曲名検索:"));
-        filterPanel.add(titleSearchField);
-        filterPanel.add(flaggedOnlyFilterBox);
+        add(buildFilterBar(), BorderLayout.NORTH);
 
-        add(filterPanel, BorderLayout.NORTH);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(new EmptyBorder(0, 0, 0, 0));
+        scrollPane.getViewport().setBackground(table.getBackground());
+        add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private JPanel buildFilterBar() {
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
+        filters.setOpaque(false);
+        filters.add(new JLabel("記号"));
+        filters.add(symbolFilterCombo);
+        filters.add(titleSearchField);
+        filters.add(flaggedOnlyFilterBox);
+        filters.add(thumbnailVisibleBox);
+
+        rowCountLabel.setForeground(UiTheme.mutedText());
+        JPanel count = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 6));
+        count.setOpaque(false);
+        count.add(rowCountLabel);
+
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setBorder(new EmptyBorder(2, 6, 2, 6));
+        bar.add(filters, BorderLayout.CENTER);
+        bar.add(count, BorderLayout.EAST);
+        return bar;
+    }
+
+    /**
+     * Widths are measured from the current font rather than hard-coded, so the columns keep
+     * fitting their content when the UI font size is changed in the settings.
+     */
+    private void configureColumns() {
+        Font base = table.getFont();
+        FontMetrics plain = table.getFontMetrics(base);
+        FontMetrics badge = table.getFontMetrics(base.deriveFont(Font.BOLD, base.getSize2D() - 1f));
+
+        int thumbnail = THUMBNAIL_WIDTH + 12;
+        setColumnWidth(COL_THUMBNAIL, thumbnail, thumbnail, thumbnail);
+
+        int date = plain.stringWidth("2025/09/15 00:00") + 20;
+        setColumnWidth(COL_CAPTURED_AT, date, date, date + 60);
+
+        int flag = plain.getHeight() + 14;
+        setColumnWidth(COL_FLAG, flag, flag, flag);
+
+        setColumnWidth(COL_TITLE, scaled(240), scaled(110), Integer.MAX_VALUE);
+
+        int symbol = Badge.width(badge, "★★★") + 12;
+        setColumnWidth(COL_SYMBOL, symbol, Badge.width(badge, "★") + 12, symbol * 2);
+
+        int level = plain.stringWidth("999") + 28;
+        setColumnWidth(COL_LEVEL, level, level, level * 2);
+
+        int rank = Badge.width(badge, "AAA") + 12;
+        setColumnWidth(COL_RANK, rank, rank, rank * 2);
+
+        setColumnWidth(COL_LAMP,
+                Badge.width(badge, "EXHARD CLEAR") + 16,
+                Badge.width(badge, "CLEAR") + 16,
+                Badge.width(badge, "LIGHT ASSIST EASY CLEAR") + 16);
+
+        setColumnWidth(COL_NOTATION, scaled(120), scaled(70), scaled(240));
+
+        int stateGaps = 26;
+        setColumnWidth(COL_STATE,
+                Badge.width(badge, "Result") + Badge.width(badge, "X")
+                        + Badge.width(badge, "Discord") + stateGaps,
+                Badge.width(badge, "Result") + stateGaps,
+                Badge.width(badge, "Course Result") + Badge.width(badge, "X")
+                        + Badge.width(badge, "Discord") + stateGaps);
+
+        column(COL_THUMBNAIL).setCellRenderer(new ThumbnailCellRenderer(thumbnailCache));
+        column(COL_CAPTURED_AT).setCellRenderer(new CapturedAtCellRenderer());
+        column(COL_TITLE).setCellRenderer(new TitleCellRenderer());
+        column(COL_SYMBOL).setCellRenderer(new BadgeCellRenderer(ResultPalette::symbolColor, true));
+        column(COL_LEVEL).setCellRenderer(new LevelCellRenderer());
+        column(COL_RANK).setCellRenderer(new BadgeCellRenderer(ResultPalette::rankColor, true));
+        column(COL_LAMP).setCellRenderer(new BadgeCellRenderer(ResultPalette::lampColor, false));
+        column(COL_NOTATION).setCellRenderer(new TitleCellRenderer());
+        column(COL_STATE).setCellRenderer(new StateCellRenderer());
+    }
+
+    private TableColumn column(int modelIndex) {
+        return table.getColumnModel().getColumn(modelIndex);
+    }
+
+    private void setColumnWidth(int modelIndex, int preferred, int min, int max) {
+        TableColumn tableColumn = column(modelIndex);
+        // TableColumn clamps min against the current max (and vice versa), so drop the
+        // previous bounds before applying the new ones.
+        tableColumn.setMinWidth(0);
+        tableColumn.setMaxWidth(Integer.MAX_VALUE);
+        tableColumn.setMinWidth(min);
+        tableColumn.setMaxWidth(max);
+        tableColumn.setPreferredWidth(preferred);
+    }
+
+    /** Scales a width that was tuned for the default font size. */
+    private static int scaled(int base) {
+        return Math.round(base * UiTheme.fontSize() / (float) AppConfig.DEFAULT_UI_FONT_SIZE);
+    }
+
+    private void applyThumbnailVisibility() {
+        boolean visible = thumbnailVisibleBox.isSelected();
+        int width = visible ? THUMBNAIL_WIDTH + 12 : 0;
+        setColumnWidth(COL_THUMBNAIL, width, width, width);
+        table.setRowHeight(rowHeight(visible));
+    }
+
+    /** Rows must fit the configured UI font, and the thumbnail when that column is shown. */
+    private int rowHeight(boolean withThumbnail) {
+        int textHeight = table.getFontMetrics(table.getFont()).getHeight() + 10;
+        return withThumbnail ? Math.max(THUMBNAIL_HEIGHT + 8, textHeight) : textHeight;
+    }
+
+    private void repaintTable() {
+        table.repaint();
     }
 
     public void setNotationChangeListener(NotationChangeListener listener) {
@@ -193,6 +327,10 @@ public class DatabasePanel extends JPanel {
         }
         int modelRow = table.convertRowIndexToModel(viewRow);
         return tableModel.getRecordAt(modelRow);
+    }
+
+    public void shutdown() {
+        thumbnailCache.shutdown();
     }
 
     static ScreenshotEntry toEntry(ScreenshotRecord record) {
@@ -279,6 +417,7 @@ public class DatabasePanel extends JPanel {
 
         if (!symbolFilterActive && !titleFilterActive && !flaggedFilterActive) {
             sorter.setRowFilter(null);
+            updateRowCountLabel();
             return;
         }
         sorter.setRowFilter(new RowFilter<DatabaseTableModel, Integer>() {
@@ -301,17 +440,75 @@ public class DatabasePanel extends JPanel {
                 return true;
             }
         });
+        updateRowCountLabel();
+    }
+
+    private void updateRowCountLabel() {
+        int shown = table.getRowCount();
+        int total = tableModel.getRowCount();
+        rowCountLabel.setText(shown == total
+                ? total + " 件"
+                : shown + " / " + total + " 件");
+    }
+
+    /** Alternating row backgrounds, applied uniformly to every renderer in the table. */
+    private static final class StripedTable extends JTable {
+        private StripedTable(AbstractTableModel model) {
+            super(model);
+        }
+
+        @Override
+        public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+            Component component = super.prepareRenderer(renderer, row, column);
+            if (!isRowSelected(row)) {
+                component.setBackground(row % 2 == 0 ? getBackground() : UiTheme.alternateRow());
+            }
+            return component;
+        }
+    }
+
+    private static final class TitleCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setBorder(new EmptyBorder(0, 6, 0, 6));
+            String text = value == null ? "" : String.valueOf(value);
+            setToolTipText("-".equals(text) || text.isBlank() ? null : text);
+            if ("-".equals(text)) {
+                setForeground(UiTheme.mutedAgainst(getForeground(), getBackground()));
+            }
+            return this;
+        }
+    }
+
+    private static final class LevelCellRenderer extends DefaultTableCellRenderer {
+        private LevelCellRenderer() {
+            setHorizontalAlignment(CENTER);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setFont(table.getFont().deriveFont(Font.BOLD));
+            if ("-".equals(String.valueOf(value))) {
+                setForeground(UiTheme.mutedAgainst(getForeground(), getBackground()));
+            }
+            return this;
+        }
     }
 
     private class DatabaseTableModel extends AbstractTableModel {
         private final String[] columns = {
-                "日付", "★", "タイトル", "記号", "レベル", "ランク", "ランプ", "投稿表記", "状態"
+                "", "日付", "★", "タイトル", "記号", "レベル", "ランク", "ランプ", "投稿表記", "状態"
         };
         private List<ScreenshotRecord> records = new ArrayList<>();
 
         public void setRecords(List<ScreenshotRecord> records) {
             this.records = new ArrayList<>(records);
             fireTableDataChanged();
+            updateRowCountLabel();
         }
 
         public ScreenshotRecord getRecordAt(int row) {
@@ -335,33 +532,34 @@ public class DatabasePanel extends JPanel {
 
         @Override
         public Class<?> getColumnClass(int columnIndex) {
-            if (columnIndex == 0) {
-                return LocalDateTime.class;
-            }
-            if (columnIndex == 1) {
-                return Boolean.class;
-            }
-            return String.class;
+            return switch (columnIndex) {
+                case COL_THUMBNAIL -> Path.class;
+                case COL_CAPTURED_AT -> LocalDateTime.class;
+                case COL_FLAG -> Boolean.class;
+                case COL_STATE -> StateCell.class;
+                default -> String.class;
+            };
         }
 
         @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex == 1 || columnIndex == 3 || columnIndex == 7;
+            return columnIndex == COL_FLAG || columnIndex == COL_SYMBOL || columnIndex == COL_NOTATION;
         }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
             ScreenshotRecord record = records.get(rowIndex);
             return switch (columnIndex) {
-                case 0 -> record.capturedAt();
-                case 1 -> record.flagged();
-                case 2 -> emptyToDash(record.title());
-                case 3 -> emptyToDash(record.tableSymbol());
-                case 4 -> emptyToDash(record.displayLevel());
-                case 5 -> emptyToDash(record.rank());
-                case 6 -> emptyToDash(record.clearType());
-                case 7 -> emptyToDash(record.postNotation());
-                case 8 -> formatState(record);
+                case COL_THUMBNAIL -> record.filePath();
+                case COL_CAPTURED_AT -> record.capturedAt();
+                case COL_FLAG -> record.flagged();
+                case COL_TITLE -> emptyToDash(record.title());
+                case COL_SYMBOL -> emptyToDash(record.tableSymbol());
+                case COL_LEVEL -> emptyToDash(record.displayLevel());
+                case COL_RANK -> emptyToDash(record.rank());
+                case COL_LAMP -> emptyToDash(record.clearType());
+                case COL_NOTATION -> emptyToDash(record.postNotation());
+                case COL_STATE -> toStateCell(record);
                 default -> "";
             };
         }
@@ -375,12 +573,12 @@ public class DatabasePanel extends JPanel {
             String text = value == null ? "" : String.valueOf(value).trim();
 
             try {
-                if (columnIndex == 1) {
+                if (columnIndex == COL_FLAG) {
                     boolean flagged = value instanceof Boolean bool && bool;
                     database.updateFlagged(record.id(), flagged);
-                } else if (columnIndex == 3) {
+                } else if (columnIndex == COL_SYMBOL) {
                     database.updateNotation(record.id(), text, record.postNotation());
-                } else if (columnIndex == 7) {
+                } else if (columnIndex == COL_NOTATION) {
                     database.updateNotation(record.id(), record.tableSymbol(), text);
                 } else {
                     return;
@@ -396,29 +594,12 @@ public class DatabasePanel extends JPanel {
             }
         }
 
-        private String formatState(ScreenshotRecord record) {
-            StringBuilder builder = new StringBuilder();
-            String stateLabel = record.stateLabel();
-            if (stateLabel != null && !stateLabel.isBlank()) {
-                builder.append(stateLabel);
+        private StateCell toStateCell(ScreenshotRecord record) {
+            if (postedStateStore == null) {
+                return new StateCell(record.stateLabel(), false, false);
             }
-            if (postedStateStore != null) {
-                PostedStateStore.PostedRecord posted = postedStateStore.get(record.fileName());
-                if (posted.isTwitterPosted()) {
-                    appendBadge(builder, "Twitter");
-                }
-                if (posted.isDiscordPosted()) {
-                    appendBadge(builder, "Discord");
-                }
-            }
-            return builder.isEmpty() ? "-" : builder.toString();
-        }
-
-        private void appendBadge(StringBuilder builder, String label) {
-            if (!builder.isEmpty()) {
-                builder.append(' ');
-            }
-            builder.append('[').append(label).append(']');
+            PostedStateStore.PostedRecord posted = postedStateStore.get(record.fileName());
+            return new StateCell(record.stateLabel(), posted.isTwitterPosted(), posted.isDiscordPosted());
         }
 
         private String emptyToDash(String value) {

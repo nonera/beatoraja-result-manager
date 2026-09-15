@@ -41,6 +41,10 @@ public class SettingsDialog extends JDialog {
 
     private static final Logger LOG = AppLogging.get(SettingsDialog.class);
 
+    private static final String THEME_DARK = "ダーク";
+    private static final String THEME_LIGHT = "ライト";
+    private static final String FONT_AUTO = "自動";
+
     public interface SaveListener {
         void onSaved(AppConfig config);
     }
@@ -59,6 +63,10 @@ public class SettingsDialog extends JDialog {
     private final JCheckBox autoUpdateEnabledBox = new JCheckBox("起動時に GitHub Releases から自動更新する");
     private final JCheckBox deleteScreenshotsOnExitBox =
             new JCheckBox("終了時にスクショフォルダ内の画像を削除する");
+    private final JComboBox<String> themeCombo = new JComboBox<>(new String[]{THEME_DARK, THEME_LIGHT});
+    private final JComboBox<String> fontFamilyCombo = new JComboBox<>();
+    private final JSpinner fontSizeSpinner = new JSpinner(new SpinnerNumberModel(
+            AppConfig.DEFAULT_UI_FONT_SIZE, AppConfig.MIN_UI_FONT_SIZE, AppConfig.MAX_UI_FONT_SIZE, 1));
 
     public SettingsDialog(Frame owner, AppConfig config, SaveListener listener) {
         super(owner, "設定", true);
@@ -68,15 +76,70 @@ public class SettingsDialog extends JDialog {
         buildUi();
         loadValues();
         refreshTwitterStatusQuietly();
-        setSize(760, 760);
+        setSize(780, 840);
+        setMinimumSize(new java.awt.Dimension(640, 480));
+        setResizable(true);
         setLocationRelativeTo(owner);
     }
 
-    private void buildUi() {
-        JPanel root = new JPanel(new BorderLayout(12, 12));
-        root.setBorder(new EmptyBorder(12, 12, 12, 12));
+    /** Makes a BoxLayout child grow to the scroll pane's full width. */
+    private static JPanel stretch(JPanel panel) {
+        panel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        panel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, panel.getPreferredSize().height));
+        return panel;
+    }
 
+    private void buildUi() {
+        JPanel stack = new JPanel();
+        stack.setLayout(new javax.swing.BoxLayout(stack, javax.swing.BoxLayout.Y_AXIS));
+        stack.setBorder(new EmptyBorder(12, 12, 12, 12));
+        stack.add(fullWidth(buildFolderSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildTwitterSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildWebhookSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildDiscordAutoSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildAppUpdateSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildAppearanceSection()));
+
+        // NORTH keeps the preferred height while stretching children to the viewport width.
+        JPanel content = new JPanel(new BorderLayout());
+        content.add(stack, BorderLayout.NORTH);
+
+        JScrollPane scrollPane = new JScrollPane(content);
+        scrollPane.setBorder(null);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.getHorizontalScrollBar().setUnitIncrement(16);
+
+        JPanel bottom = new JPanel(new BorderLayout());
+        bottom.setBorder(new EmptyBorder(8, 12, 12, 12));
+        JPanel bottomActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
+        JButton openLogs = new JButton("ログフォルダを開く");
+        openLogs.addActionListener(e -> openLogFolder());
+        bottomActions.add(openLogs);
+        JButton save = new JButton("保存");
+        save.addActionListener(e -> saveSettings());
+        bottomActions.add(save);
+        bottom.add(bottomActions, BorderLayout.EAST);
+
+        JPanel root = new JPanel(new BorderLayout());
+        root.add(scrollPane, BorderLayout.CENTER);
+        root.add(bottom, BorderLayout.SOUTH);
+        setContentPane(root);
+    }
+
+    private static JPanel fullWidth(JPanel panel) {
+        panel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        panel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        return panel;
+    }
+
+    private JPanel buildFolderSection() {
         JPanel form = new JPanel(new GridBagLayout());
+        form.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(6, 6, 6, 6);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -128,10 +191,19 @@ public class SettingsDialog extends JDialog {
         gbc.gridy++;
         gbc.gridwidth = 2;
         form.add(new JLabel("空欄の場合は config_sys.json の playername を使用（scoredatalog.db 照合用）"), gbc);
+        return form;
+    }
 
-        gbc.gridwidth = 1;
+    private JPanel buildTwitterSection() {
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 6, 6, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+
         gbc.gridx = 0;
-        gbc.gridy++;
+        gbc.gridy = 0;
         gbc.gridwidth = 2;
         form.add(new JLabel("Twitter 認証"), gbc);
 
@@ -160,16 +232,20 @@ public class SettingsDialog extends JDialog {
 
         gbc.gridy++;
         form.add(new JLabel("Chrome / Edge が起動します。X へログイン後「ログイン完了」を押してください"), gbc);
+        return form;
+    }
 
-        root.add(form, BorderLayout.NORTH);
-
+    private JPanel buildWebhookSection() {
         JTable webhookTable = new JTable(webhookTableModel);
         webhookTable.getColumnModel().getColumn(0).setPreferredWidth(120);
         webhookTable.getColumnModel().getColumn(1).setPreferredWidth(480);
         JScrollPane webhookScroll = new JScrollPane(webhookTable);
         webhookScroll.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord Webhook"));
+        webhookScroll.setPreferredSize(new java.awt.Dimension(520, 140));
+        webhookScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JPanel webhookActions = new JPanel();
+        JPanel webhookActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
+        webhookActions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         JButton addWebhook = new JButton("追加");
         addWebhook.addActionListener(e -> webhookTableModel.addRow());
         JButton removeWebhook = new JButton("削除");
@@ -181,9 +257,17 @@ public class SettingsDialog extends JDialog {
         });
         webhookActions.add(addWebhook);
         webhookActions.add(removeWebhook);
-        root.add(webhookActions, BorderLayout.EAST);
 
+        JPanel section = new JPanel(new BorderLayout(0, 4));
+        section.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        section.add(webhookScroll, BorderLayout.CENTER);
+        section.add(webhookActions, BorderLayout.SOUTH);
+        return section;
+    }
+
+    private JPanel buildDiscordAutoSection() {
         JPanel discordAutoPanel = new JPanel(new GridBagLayout());
+        discordAutoPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         discordAutoPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord 自動投稿"));
         GridBagConstraints autoGbc = new GridBagConstraints();
         autoGbc.insets = new Insets(6, 6, 6, 6);
@@ -218,8 +302,12 @@ public class SettingsDialog extends JDialog {
         autoGbc.gridy++;
         autoGbc.gridwidth = 2;
         discordAutoPanel.add(new JLabel("リザルト（Result）の未投稿スクショが設定枚数に達したら自動送信します（1〜10枚）"), autoGbc);
+        return discordAutoPanel;
+    }
 
+    private JPanel buildAppUpdateSection() {
         JPanel appUpdatePanel = new JPanel(new GridBagLayout());
+        appUpdatePanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         appUpdatePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("アプリ更新"));
         GridBagConstraints updateGbc = new GridBagConstraints();
         updateGbc.insets = new Insets(6, 6, 6, 6);
@@ -230,29 +318,54 @@ public class SettingsDialog extends JDialog {
         appUpdatePanel.add(autoUpdateEnabledBox, updateGbc);
         updateGbc.gridy++;
         appUpdatePanel.add(new JLabel("新しい zip をダウンロードして上書き後、自動的に再起動します"), updateGbc);
+        return appUpdatePanel;
+    }
 
-        JPanel southStack = new JPanel();
-        southStack.setLayout(new javax.swing.BoxLayout(southStack, javax.swing.BoxLayout.Y_AXIS));
-        southStack.add(discordAutoPanel);
-        southStack.add(appUpdatePanel);
+    private JPanel buildAppearanceSection() {
+        fontFamilyCombo.removeAllItems();
+        fontFamilyCombo.addItem(FONT_AUTO);
+        for (String family : com.beatoraja.screenshot.ui.theme.UiTheme.japaneseCapableFontFamilies()) {
+            fontFamilyCombo.addItem(family);
+        }
+        fontFamilyCombo.setPrototypeDisplayValue("Yu Gothic UI");
 
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
-        centerPanel.add(webhookScroll, BorderLayout.CENTER);
-        centerPanel.add(southStack, BorderLayout.SOUTH);
-        root.add(centerPanel, BorderLayout.CENTER);
+        JPanel appearancePanel = new JPanel(new GridBagLayout());
+        appearancePanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        appearancePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("外観"));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 6, 6, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
 
-        JPanel bottom = new JPanel(new BorderLayout());
-        JPanel bottomActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
-        JButton openLogs = new JButton("ログフォルダを開く");
-        openLogs.addActionListener(e -> openLogFolder());
-        bottomActions.add(openLogs);
-        JButton save = new JButton("保存");
-        save.addActionListener(e -> saveSettings());
-        bottomActions.add(save);
-        bottom.add(bottomActions, BorderLayout.EAST);
-        root.add(bottom, BorderLayout.SOUTH);
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 0;
+        appearancePanel.add(new JLabel("テーマ"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        appearancePanel.add(themeCombo, gbc);
 
-        setContentPane(root);
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.weightx = 0;
+        appearancePanel.add(new JLabel("フォント"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        appearancePanel.add(fontFamilyCombo, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.weightx = 0;
+        appearancePanel.add(new JLabel("サイズ"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        appearancePanel.add(fontSizeSpinner, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.gridwidth = 2;
+        appearancePanel.add(new JLabel("保存すると画面を開き直して反映します"), gbc);
+        return appearancePanel;
     }
 
     private void loadValues() {
@@ -264,6 +377,13 @@ public class SettingsDialog extends JDialog {
         reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
         autoUpdateEnabledBox.setSelected(config.isAutoUpdateEnabled());
         deleteScreenshotsOnExitBox.setSelected(config.isDeleteScreenshotsOnExit());
+        themeCombo.setSelectedItem("light".equals(config.getUiTheme()) ? THEME_LIGHT : THEME_DARK);
+        String fontFamily = config.getUiFontFamily();
+        fontFamilyCombo.setSelectedItem(fontFamily.isBlank() ? FONT_AUTO : fontFamily);
+        if (fontFamilyCombo.getSelectedIndex() < 0) {
+            fontFamilyCombo.setSelectedItem(FONT_AUTO);
+        }
+        fontSizeSpinner.setValue(config.getUiFontSize());
         twitterStatusLabel.setText(config.hasManualTwitterAuth() ? "ログイン情報あり（未確認）" : "未ログイン");
         refreshPlayerNames();
         playerNameCombo.getEditor().setItem(config.getPlayerName());
@@ -389,6 +509,10 @@ public class SettingsDialog extends JDialog {
         config.setDiscordAutoPostEnabled(discordAutoPostEnabledBox.isSelected());
         config.setAutoUpdateEnabled(autoUpdateEnabledBox.isSelected());
         config.setDeleteScreenshotsOnExit(deleteScreenshotsOnExitBox.isSelected());
+        config.setUiTheme(THEME_LIGHT.equals(themeCombo.getSelectedItem()) ? "light" : "dark");
+        Object selectedFont = fontFamilyCombo.getSelectedItem();
+        config.setUiFontFamily(selectedFont == null || FONT_AUTO.equals(selectedFont) ? "" : String.valueOf(selectedFont));
+        config.setUiFontSize((Integer) fontSizeSpinner.getValue());
         config.setDiscordAutoPostBatchSize((Integer) discordAutoPostBatchSpinner.getValue());
         Object selectedWebhook = discordAutoPostWebhookCombo.getSelectedItem();
         config.setDiscordAutoPostWebhookName(selectedWebhook == null ? "" : String.valueOf(selectedWebhook).trim());

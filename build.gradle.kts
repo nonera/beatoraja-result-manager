@@ -21,6 +21,7 @@ repositories {
 }
 
 dependencies {
+    implementation("com.formdev:flatlaf:3.6")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2")
     implementation("org.xerial:sqlite-jdbc:3.46.1.3")

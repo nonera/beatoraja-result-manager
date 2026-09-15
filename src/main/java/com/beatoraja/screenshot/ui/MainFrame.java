@@ -16,10 +16,13 @@ import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.ui.theme.AccentButton;
+import com.beatoraja.screenshot.ui.theme.UiTheme;
 import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
@@ -36,6 +39,7 @@ import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.FlowLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -68,10 +72,11 @@ public class MainFrame extends JFrame {
     private final DatabasePanel databasePanel = new DatabasePanel();
     private final List<ScreenshotEntry> postOrderEntries = new ArrayList<>();
     private final JLabel statusLabel = new JLabel("準備中...");
+    private final JLabel selectionCountLabel = new JLabel();
     private final JProgressBar indexProgressBar = new JProgressBar();
     private final JComboBox<AppConfig.DiscordWebhookEntry> discordWebhookCombo = new JComboBox<>();
-    private final JButton twitterButton = new JButton("Twitter に投稿");
-    private final JButton discordButton = new JButton("Discord に送信");
+    private final JButton twitterButton = new AccentButton("Twitter に投稿", UiTheme.twitterAccent());
+    private final JButton discordButton = new AccentButton("Discord に送信", UiTheme.discordAccent());
     private JMenuItem refreshMenuItem;
     private SwingWorker<List<TableLookupService.EnrichedScreenshot>, Integer> indexingWorker;
 
@@ -169,39 +174,65 @@ public class MainFrame extends JFrame {
         setJMenuBar(menuBar);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
-
-        JPanel actionPanel = new JPanel(new BorderLayout(8, 8));
-        actionPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
-
-        JPanel discordPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        discordPanel.add(new JLabel("Discord 送信先:"));
-        discordPanel.add(discordWebhookCombo);
-        actionPanel.add(discordPanel, BorderLayout.WEST);
-
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        twitterButton.addActionListener(e -> postToTwitter());
-        discordButton.addActionListener(e -> postToDiscord());
-        buttons.add(twitterButton);
-        buttons.add(discordButton);
-        actionPanel.add(buttons, BorderLayout.EAST);
-        mainPanel.add(actionPanel, BorderLayout.NORTH);
+        mainPanel.add(buildToolBar(), BorderLayout.NORTH);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, databasePanel, previewPanel);
         splitPane.setResizeWeight(0.55);
+        splitPane.setBorder(null);
         mainPanel.add(splitPane, BorderLayout.CENTER);
         add(mainPanel, BorderLayout.CENTER);
+        add(buildStatusBar(), BorderLayout.SOUTH);
 
+        updateActionButtons(0);
+    }
+
+    private JPanel buildToolBar() {
+        selectionCountLabel.setForeground(UiTheme.mutedText());
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        left.setOpaque(false);
+        left.add(new JLabel("Discord 送信先"));
+        left.add(discordWebhookCombo);
+        left.add(selectionCountLabel);
+
+        twitterButton.addActionListener(e -> postToTwitter());
+        discordButton.addActionListener(e -> postToDiscord());
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        right.setOpaque(false);
+        right.add(twitterButton);
+        right.add(discordButton);
+
+        JPanel toolBar = new JPanel(new BorderLayout(8, 0));
+        toolBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UiTheme.subtle()),
+                new EmptyBorder(8, 10, 8, 10)));
+        toolBar.add(left, BorderLayout.WEST);
+        toolBar.add(right, BorderLayout.EAST);
+        return toolBar;
+    }
+
+    private JPanel buildStatusBar() {
+        statusLabel.setForeground(UiTheme.mutedText());
         indexProgressBar.setStringPainted(true);
         indexProgressBar.setPreferredSize(new Dimension(220, indexProgressBar.getPreferredSize().height));
         indexProgressBar.setVisible(false);
 
-        JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
-        statusPanel.setBorder(new EmptyBorder(2, 8, 2, 8));
-        statusPanel.add(statusLabel, BorderLayout.CENTER);
-        statusPanel.add(indexProgressBar, BorderLayout.EAST);
-        add(statusPanel, BorderLayout.SOUTH);
+        JLabel versionLabel = new JLabel("v" + AppVersion.get());
+        versionLabel.setForeground(UiTheme.mutedText());
+        versionLabel.setFont(versionLabel.getFont().deriveFont(Font.PLAIN, versionLabel.getFont().getSize2D() - 1f));
 
-        updateActionButtons(0);
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        right.setOpaque(false);
+        right.add(indexProgressBar);
+        right.add(versionLabel);
+
+        JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
+        statusPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UiTheme.subtle()),
+                new EmptyBorder(4, 10, 4, 10)));
+        statusPanel.add(statusLabel, BorderLayout.CENTER);
+        statusPanel.add(right, BorderLayout.EAST);
+        return statusPanel;
     }
 
     private void reloadDatabaseQuietly() {
@@ -328,6 +359,7 @@ public class MainFrame extends JFrame {
     }
 
     private void updateActionButtons(int selectedCount) {
+        selectionCountLabel.setText(selectedCount == 0 ? "" : selectedCount + " 枚選択中");
         twitterButton.setEnabled(selectedCount >= 1);
         twitterButton.setToolTipText(selectedCount > 4
                 ? "5枚以上は4枚ずつ別ツイートとして順番に投稿します"
@@ -699,13 +731,32 @@ public class MainFrame extends JFrame {
     }
 
     private void openSettings() {
+        String previousAppearance = appearanceKey(config);
         SettingsDialog dialog = new SettingsDialog(this, config, updatedConfig -> {
+            if (!previousAppearance.equals(appearanceKey(updatedConfig))) {
+                reopenWithAppearance(updatedConfig);
+                return;
+            }
             reloadDiscordWebhooks();
             reloadTableRegistry();
             refreshScreenshots();
             startWatcher();
         });
         dialog.setVisible(true);
+    }
+
+    private static String appearanceKey(AppConfig config) {
+        return config.getUiTheme() + "\u0000" + config.getUiFontFamily() + "\u0000" + config.getUiFontSize();
+    }
+
+    /**
+     * Rebuilds the window so every cached theme color and font-derived size is re-read.
+     * Repainting in place would leave the custom renderers, borders and row heights stale.
+     */
+    private void reopenWithAppearance(AppConfig updatedConfig) {
+        UiTheme.apply(updatedConfig.getUiTheme(), updatedConfig.getUiFontFamily(), updatedConfig.getUiFontSize());
+        dispose();
+        SwingUtilities.invokeLater(() -> new MainFrame(updatedConfig).setVisible(true));
     }
 
     private void warnAboutFailedTableFiles() {
@@ -842,6 +893,7 @@ public class MainFrame extends JFrame {
                 LOG.log(Level.WARNING, "Failed to close screenshot database", e);
             }
         }
+        databasePanel.shutdown();
         chartResolverService.close();
         LOG.info("Main window closed");
         super.dispose();
