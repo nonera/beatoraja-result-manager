@@ -74,6 +74,7 @@ public class ScreenshotDatabase implements AutoCloseable {
         addColumnIfMissing("sha256", "TEXT");
         addColumnIfMissing("md5", "TEXT");
         addColumnIfMissing("resolved_from_player", "INTEGER NOT NULL DEFAULT 0");
+        addColumnIfMissing("flagged", "INTEGER NOT NULL DEFAULT 0");
     }
 
     private void addColumnIfMissing(String column, String definition) throws SQLException {
@@ -155,6 +156,19 @@ public class ScreenshotDatabase implements AutoCloseable {
         }
     }
 
+    public void updateFlagged(long id, boolean flagged) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE screenshots
+                SET flagged = ?, updated_at = ?
+                WHERE id = ?
+                """)) {
+            statement.setInt(1, flagged ? 1 : 0);
+            statement.setString(2, LocalDateTime.now().format(DB_TIME));
+            statement.setLong(3, id);
+            statement.executeUpdate();
+        }
+    }
+
     public void updateNotation(long id, String tableSymbol, String postNotation) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE screenshots
@@ -173,7 +187,7 @@ public class ScreenshotDatabase implements AutoCloseable {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT id, file_path, file_name, captured_at, title, sha256, md5, table_symbol, table_level_num, level,
                        rank, clear_type, state_label, post_notation, available_notations, notation_edited,
-                       resolved_from_player
+                       resolved_from_player, flagged
                 FROM screenshots
                 WHERE file_path = ?
                 """)) {
@@ -217,7 +231,7 @@ public class ScreenshotDatabase implements AutoCloseable {
              ResultSet rs = statement.executeQuery("""
                      SELECT id, file_path, file_name, captured_at, title, sha256, md5, table_symbol, table_level_num, level,
                             rank, clear_type, state_label, post_notation, available_notations, notation_edited,
-                            resolved_from_player
+                            resolved_from_player, flagged
                      FROM screenshots
                      ORDER BY captured_at DESC, id DESC
                      """)) {
@@ -248,7 +262,8 @@ public class ScreenshotDatabase implements AutoCloseable {
                 nullToEmpty(rs.getString("post_notation")),
                 readJsonList(rs.getString("available_notations")),
                 rs.getInt("notation_edited") == 1,
-                rs.getInt("resolved_from_player") == 1
+                rs.getInt("resolved_from_player") == 1,
+                rs.getInt("flagged") == 1
         );
     }
 

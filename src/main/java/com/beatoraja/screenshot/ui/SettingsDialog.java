@@ -57,6 +57,8 @@ public class SettingsDialog extends JDialog {
             new SpinnerNumberModel(4, 1, 10, 1));
     private final JComboBox<String> discordAutoPostWebhookCombo = new JComboBox<>();
     private final JCheckBox autoUpdateEnabledBox = new JCheckBox("起動時に GitHub Releases から自動更新する");
+    private final JCheckBox deleteScreenshotsOnExitBox =
+            new JCheckBox("終了時にスクショフォルダ内の画像を削除する");
 
     public SettingsDialog(Frame owner, AppConfig config, SaveListener listener) {
         super(owner, "設定", true);
@@ -91,6 +93,14 @@ public class SettingsDialog extends JDialog {
         screenshotPanel.add(browseScreenshot, BorderLayout.EAST);
         form.add(screenshotPanel, gbc);
 
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.gridwidth = 2;
+        form.add(deleteScreenshotsOnExitBox, gbc);
+        gbc.gridy++;
+        form.add(new JLabel("アプリ終了時に beatoraja の screenshot フォルダ内 PNG を削除します"), gbc);
+
+        gbc.gridwidth = 1;
         gbc.gridx = 0;
         gbc.gridy++;
         form.add(new JLabel("beatoraja フォルダ"), gbc);
@@ -253,6 +263,7 @@ public class SettingsDialog extends JDialog {
         discordAutoPostBatchSpinner.setValue(config.getDiscordAutoPostBatchSize());
         reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
         autoUpdateEnabledBox.setSelected(config.isAutoUpdateEnabled());
+        deleteScreenshotsOnExitBox.setSelected(config.isDeleteScreenshotsOnExit());
         twitterStatusLabel.setText(config.hasManualTwitterAuth() ? "ログイン情報あり（未確認）" : "未ログイン");
         refreshPlayerNames();
         playerNameCombo.getEditor().setItem(config.getPlayerName());
@@ -377,6 +388,7 @@ public class SettingsDialog extends JDialog {
         reloadDiscordAutoPostWebhookChoices(currentWebhookName);
         config.setDiscordAutoPostEnabled(discordAutoPostEnabledBox.isSelected());
         config.setAutoUpdateEnabled(autoUpdateEnabledBox.isSelected());
+        config.setDeleteScreenshotsOnExit(deleteScreenshotsOnExitBox.isSelected());
         config.setDiscordAutoPostBatchSize((Integer) discordAutoPostBatchSpinner.getValue());
         Object selectedWebhook = discordAutoPostWebhookCombo.getSelectedItem();
         config.setDiscordAutoPostWebhookName(selectedWebhook == null ? "" : String.valueOf(selectedWebhook).trim());

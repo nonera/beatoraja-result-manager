@@ -34,6 +34,7 @@ public class AppConfig {
     private int discordAutoPostBatchSize = 4;
     private String discordAutoPostWebhookName = "";
     private Boolean autoUpdateEnabled;
+    private boolean deleteScreenshotsOnExit;
     private List<String> tablePriorityOrder = new ArrayList<>();
     private List<TableNotationRule> tableNotationRules = new ArrayList<>();
     private String twitterBrowser = "";
@@ -167,6 +168,14 @@ public class AppConfig {
 
     public void setAutoUpdateEnabled(boolean autoUpdateEnabled) {
         this.autoUpdateEnabled = autoUpdateEnabled;
+    }
+
+    public boolean isDeleteScreenshotsOnExit() {
+        return deleteScreenshotsOnExit;
+    }
+
+    public void setDeleteScreenshotsOnExit(boolean deleteScreenshotsOnExit) {
+        this.deleteScreenshotsOnExit = deleteScreenshotsOnExit;
     }
 
     public List<String> getTablePriorityOrder() {

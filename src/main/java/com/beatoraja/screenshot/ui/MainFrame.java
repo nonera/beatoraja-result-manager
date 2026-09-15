@@ -6,7 +6,9 @@ import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
+import com.beatoraja.screenshot.service.PostBatchSplitter;
 import com.beatoraja.screenshot.service.PostedStateStore;
+import com.beatoraja.screenshot.service.ScreenshotFolderCleanupService;
 import com.beatoraja.screenshot.service.ScreenshotScanner;
 import com.beatoraja.screenshot.service.ScreenshotWatcher;
 import com.beatoraja.screenshot.service.TweetTextGenerator;
@@ -35,11 +37,17 @@ import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -58,6 +66,7 @@ public class MainFrame extends JFrame {
 
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
+    private final List<ScreenshotEntry> postOrderEntries = new ArrayList<>();
     private final JLabel statusLabel = new JLabel("準備中...");
     private final JProgressBar indexProgressBar = new JProgressBar();
     private final JComboBox<AppConfig.DiscordWebhookEntry> discordWebhookCombo = new JComboBox<>();
@@ -74,6 +83,17 @@ public class MainFrame extends JFrame {
         initDatabase();
         reloadTableRegistry();
         buildUi();
+        previewPanel.setPostOrderChangeListener(new PreviewPanel.PostOrderChangeListener() {
+            @Override
+            public void onMoveUp(int index) {
+                movePostOrderEntry(index, index - 1);
+            }
+
+            @Override
+            public void onMoveDown(int index) {
+                movePostOrderEntry(index, index + 1);
+            }
+        });
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
@@ -82,7 +102,13 @@ public class MainFrame extends JFrame {
         reloadDatabaseQuietly();
         refreshScreenshots();
         startWatcher();
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                exitApplication();
+            }
+        });
         setSize(1200, 760);
         setLocationRelativeTo(null);
     }
@@ -106,6 +132,12 @@ public class MainFrame extends JFrame {
         fileMenu.add(refreshMenuItem);
         menuBar.add(fileMenu);
 
+        JMenu selectionMenu = new JMenu("選択");
+        JMenuItem selectFlaggedItem = new JMenuItem("フラグ付きをすべて選択");
+        selectFlaggedItem.addActionListener(e -> databasePanel.selectAllFlagged());
+        selectionMenu.add(selectFlaggedItem);
+        menuBar.add(selectionMenu);
+
         JMenu settingsMenu = new JMenu("設定");
         JMenuItem settingsItem = new JMenuItem("設定...");
         settingsItem.addActionListener(e -> openSettings());
@@ -117,6 +149,23 @@ public class MainFrame extends JFrame {
         tableNotationRulesItem.addActionListener(e -> openTableNotationRulesDialog());
         settingsMenu.add(tableNotationRulesItem);
         menuBar.add(settingsMenu);
+
+        JMenu helpMenu = new JMenu("ヘルプ");
+        JMenuItem usageItem = new JMenuItem("使い方...");
+        usageItem.addActionListener(e -> HelpDialog.showUsage(this));
+        helpMenu.add(usageItem);
+        JMenuItem openLogsItem = new JMenuItem("ログフォルダを開く");
+        openLogsItem.addActionListener(e -> HelpDialog.openLogFolder(this));
+        helpMenu.add(openLogsItem);
+        JMenuItem repositoryItem = new JMenuItem("GitHub リポジトリ");
+        repositoryItem.addActionListener(e -> HelpDialog.openRepository(this));
+        helpMenu.add(repositoryItem);
+        helpMenu.addSeparator();
+        JMenuItem aboutItem = new JMenuItem("バージョン情報...");
+        aboutItem.addActionListener(e -> HelpDialog.showAbout(this));
+        helpMenu.add(aboutItem);
+        menuBar.add(helpMenu);
+
         setJMenuBar(menuBar);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
@@ -190,17 +239,63 @@ public class MainFrame extends JFrame {
     }
 
     private void onSelectionChanged(List<ScreenshotEntry> selectedEntries) {
-        List<String> postNotations = resolvePostNotations(selectedEntries);
-        String message = TweetTextGenerator.generate(selectedEntries, postNotations);
-        previewPanel.showEntries(selectedEntries, message);
-        updateActionButtons(selectedEntries.size());
-        statusLabel.setText(selectedEntries.isEmpty()
+        syncPostOrder(selectedEntries);
+        refreshPostPreview();
+        updateActionButtons(postOrderEntries.size());
+        statusLabel.setText(postOrderEntries.isEmpty()
                 ? "画像を選択してください"
-                : selectedEntries.size() + "枚選択中");
+                : postOrderEntries.size() + "枚選択中");
     }
 
     private void refreshSelectedTweetText() {
-        onSelectionChanged(databasePanel.getSelectedEntries());
+        syncPostOrder(databasePanel.getSelectedEntries());
+        refreshPostPreview();
+    }
+
+    private void syncPostOrder(List<ScreenshotEntry> newlySelected) {
+        if (newlySelected == null || newlySelected.isEmpty()) {
+            postOrderEntries.clear();
+            return;
+        }
+
+        Set<String> selectedNames = new HashSet<>();
+        for (ScreenshotEntry entry : newlySelected) {
+            selectedNames.add(entry.getFileName());
+        }
+
+        List<ScreenshotEntry> kept = new ArrayList<>();
+        for (ScreenshotEntry entry : postOrderEntries) {
+            if (selectedNames.contains(entry.getFileName())) {
+                kept.add(entry);
+            }
+        }
+
+        Set<String> keptNames = new HashSet<>();
+        for (ScreenshotEntry entry : kept) {
+            keptNames.add(entry.getFileName());
+        }
+        for (ScreenshotEntry entry : newlySelected) {
+            if (!keptNames.contains(entry.getFileName())) {
+                kept.add(entry);
+            }
+        }
+
+        postOrderEntries.clear();
+        postOrderEntries.addAll(kept);
+    }
+
+    private void refreshPostPreview() {
+        List<String> postNotations = resolvePostNotations(postOrderEntries);
+        String message = TweetTextGenerator.generate(postOrderEntries, postNotations);
+        previewPanel.showEntries(postOrderEntries, message);
+    }
+
+    private void movePostOrderEntry(int fromIndex, int toIndex) {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= postOrderEntries.size() || toIndex >= postOrderEntries.size()) {
+            return;
+        }
+        Collections.swap(postOrderEntries, fromIndex, toIndex);
+        refreshPostPreview();
     }
 
     private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
@@ -233,11 +328,14 @@ public class MainFrame extends JFrame {
     }
 
     private void updateActionButtons(int selectedCount) {
-        twitterButton.setEnabled(selectedCount >= 1 && selectedCount <= 4);
-        discordButton.setEnabled(selectedCount >= 1 && selectedCount <= 10 && discordWebhookCombo.getItemCount() > 0);
-
-        twitterButton.setToolTipText(selectedCount > 4 ? "Twitter は最大4枚まで" : null);
-        discordButton.setToolTipText(selectedCount > 10 ? "Discord は最大10枚まで" : null);
+        twitterButton.setEnabled(selectedCount >= 1);
+        twitterButton.setToolTipText(selectedCount > 4
+                ? "5枚以上は4枚ずつ別ツイートとして順番に投稿します"
+                : null);
+        discordButton.setEnabled(selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
+        discordButton.setToolTipText(selectedCount > 10
+                ? "11枚以上は10枚ずつ分割送信します"
+                : null);
     }
 
     private void refreshScreenshots() {
@@ -417,12 +515,8 @@ public class MainFrame extends JFrame {
     }
 
     private void postToTwitter() {
-        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
-            return;
-        }
-        if (selected.size() > 4) {
-            JOptionPane.showMessageDialog(this, "Twitter は最大4枚まで投稿できます。", "制限", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -437,33 +531,67 @@ public class MainFrame extends JFrame {
         }
 
         setPostingEnabled(false);
-        statusLabel.setText("ブラウザで投稿画面を開いています...");
-        LOG.info("Twitter manual post started: " + selected.size() + " image(s)");
-
-        String message = previewPanel.getMessage();
-        List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 4);
+        statusLabel.setText("Twitter 投稿 (0/" + batches.size() + ")");
+        LOG.info("Twitter manual post started: " + selected.size() + " image(s), "
+                + batches.size() + " batch(es)");
 
         new Thread(() -> {
             ClixService clixService = new ClixService(config);
-            ClixService.PostResult result = clixService.post(message, imagePaths);
+            List<ScreenshotEntry> postedEntries = new ArrayList<>();
+            String lastError = null;
+            for (int i = 0; i < batches.size(); i++) {
+                List<ScreenshotEntry> batch = batches.get(i);
+                int batchNumber = i + 1;
+                SwingUtilities.invokeLater(() ->
+                        statusLabel.setText("Twitter 投稿 (" + batchNumber + "/" + batches.size()
+                                + ") — ブラウザで投稿してください..."));
+                List<String> notations = resolvePostNotations(batch);
+                String text = TweetTextGenerator.generate(batch, notations);
+                List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+                ClixService.PostResult result = clixService.post(text, imagePaths);
+                if (result.success()) {
+                    postedEntries.addAll(batch);
+                } else {
+                    lastError = result.message();
+                    break;
+                }
+            }
+
+            List<ScreenshotEntry> postedSnapshot = List.copyOf(postedEntries);
+            String errorMessage = lastError;
+            int batchCount = batches.size();
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
-                if (result.success()) {
-                    LOG.info("Twitter manual post succeeded");
-                    for (ScreenshotEntry entry : selected) {
-                        postedStateStore.markTwitterPosted(entry.getFileName(), result.tweetId());
+                if (errorMessage == null) {
+                    LOG.info("Twitter manual post succeeded: " + postedSnapshot.size() + " image(s)");
+                    for (ScreenshotEntry entry : postedSnapshot) {
+                        postedStateStore.markTwitterPosted(entry.getFileName(), "");
                     }
                     savePostedStateQuietly();
                     databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Twitter 投稿完了");
-                    JOptionPane.showMessageDialog(this, "Twitter に投稿しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
+                    String completionMessage = batchCount > 1
+                            ? batchCount + " 件のツイート投稿が完了しました。"
+                            : "Twitter に投稿しました。";
+                    JOptionPane.showMessageDialog(this, completionMessage, "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Twitter 投稿失敗");
-                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(result.message()));
-                    if (result.message().contains("ログイン") || result.message().contains("認証")) {
+                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(errorMessage));
+                    if (!postedSnapshot.isEmpty()) {
+                        for (ScreenshotEntry entry : postedSnapshot) {
+                            postedStateStore.markTwitterPosted(entry.getFileName(), "");
+                        }
+                        savePostedStateQuietly();
+                        databasePanel.setPostedStateStore(postedStateStore);
+                    }
+                    String message = postedSnapshot.isEmpty()
+                            ? errorMessage
+                            : postedSnapshot.size() + " 枚までは投稿済みです。\n" + errorMessage;
+                    if (errorMessage.contains("ログイン") || errorMessage.contains("認証")) {
                         int answer = JOptionPane.showConfirmDialog(
                                 this,
-                                result.message() + "\n\nTwitter に再ログインしますか？",
+                                message + "\n\nTwitter に再ログインしますか？",
                                 "Twitter 投稿失敗",
                                 JOptionPane.YES_NO_OPTION
                         );
@@ -472,7 +600,7 @@ public class MainFrame extends JFrame {
                             loginDialog.showAndLogin();
                         }
                     } else {
-                        JOptionPane.showMessageDialog(this, result.message(), "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(this, message, "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
                     }
                 }
             });
@@ -480,12 +608,8 @@ public class MainFrame extends JFrame {
     }
 
     private void postToDiscord() {
-        List<ScreenshotEntry> selected = databasePanel.getSelectedEntries();
+        List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
-            return;
-        }
-        if (selected.size() > 10) {
-            JOptionPane.showMessageDialog(this, "Discord は最大10枚まで送信できます。", "制限", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -496,31 +620,65 @@ public class MainFrame extends JFrame {
         }
 
         setPostingEnabled(false);
-        statusLabel.setText("Discord に送信中...");
-        LOG.info("Discord manual post started: " + selected.size() + " image(s) via "
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 10);
+        statusLabel.setText("Discord に送信中... (0/" + batches.size() + ")");
+        LOG.info("Discord manual post started: " + selected.size() + " image(s), "
+                + batches.size() + " batch(es) via "
                 + AppLogging.maskWebhookUrl(webhook.getUrl()));
-
-        String message = previewPanel.getMessage();
-        List<Path> imagePaths = selected.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         new Thread(() -> {
             DiscordWebhookService discordWebhookService = new DiscordWebhookService();
-            DiscordWebhookService.PostResult result = discordWebhookService.post(webhook.getUrl(), message, imagePaths);
+            List<ScreenshotEntry> postedEntries = new ArrayList<>();
+            String lastError = null;
+            for (int i = 0; i < batches.size(); i++) {
+                List<ScreenshotEntry> batch = batches.get(i);
+                int batchNumber = i + 1;
+                SwingUtilities.invokeLater(() ->
+                        statusLabel.setText("Discord に送信中... (" + batchNumber + "/" + batches.size() + ")"));
+                List<String> notations = resolvePostNotations(batch);
+                String message = TweetTextGenerator.generate(batch, notations);
+                List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+                DiscordWebhookService.PostResult result =
+                        discordWebhookService.post(webhook.getUrl(), message, imagePaths);
+                if (result.success()) {
+                    postedEntries.addAll(batch);
+                } else {
+                    lastError = result.message();
+                    break;
+                }
+            }
+
+            List<ScreenshotEntry> postedSnapshot = List.copyOf(postedEntries);
+            String errorMessage = lastError;
+            int batchCount = batches.size();
             SwingUtilities.invokeLater(() -> {
                 setPostingEnabled(true);
-                if (result.success()) {
-                    LOG.info("Discord manual post succeeded");
-                    for (ScreenshotEntry entry : selected) {
-                        postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
+                if (errorMessage == null) {
+                    LOG.info("Discord manual post succeeded: " + postedSnapshot.size() + " image(s)");
+                    for (ScreenshotEntry entry : postedSnapshot) {
+                        postedStateStore.markDiscordPosted(entry.getFileName(), "");
                     }
                     savePostedStateQuietly();
                     databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Discord 送信完了");
-                    JOptionPane.showMessageDialog(this, "Discord に送信しました。", "完了", JOptionPane.INFORMATION_MESSAGE);
+                    String completionMessage = batchCount > 1
+                            ? "Discord に " + batchCount + " 回に分けて送信しました。"
+                            : "Discord に送信しました。";
+                    JOptionPane.showMessageDialog(this, completionMessage, "完了", JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     statusLabel.setText("Discord 送信失敗");
-                    LOG.warning("Discord manual post failed: " + AppLogging.sanitize(result.message()));
-                    JOptionPane.showMessageDialog(this, result.message(), "Discord 送信失敗", JOptionPane.ERROR_MESSAGE);
+                    LOG.warning("Discord manual post failed: " + AppLogging.sanitize(errorMessage));
+                    if (!postedSnapshot.isEmpty()) {
+                        for (ScreenshotEntry entry : postedSnapshot) {
+                            postedStateStore.markDiscordPosted(entry.getFileName(), "");
+                        }
+                        savePostedStateQuietly();
+                        databasePanel.setPostedStateStore(postedStateStore);
+                    }
+                    String message = postedSnapshot.isEmpty()
+                            ? errorMessage
+                            : postedSnapshot.size() + " 枚までは送信済みです。\n" + errorMessage;
+                    JOptionPane.showMessageDialog(this, message, "Discord 送信失敗", JOptionPane.ERROR_MESSAGE);
                 }
             });
         }, "discord-post").start();
@@ -535,9 +693,9 @@ public class MainFrame extends JFrame {
     }
 
     private void setPostingEnabled(boolean enabled) {
-        twitterButton.setEnabled(enabled && databasePanel.getSelectedCount() >= 1 && databasePanel.getSelectedCount() <= 4);
-        discordButton.setEnabled(enabled && databasePanel.getSelectedCount() >= 1 && databasePanel.getSelectedCount() <= 10
-                && discordWebhookCombo.getItemCount() > 0);
+        int selectedCount = databasePanel.getSelectedCount();
+        twitterButton.setEnabled(enabled && selectedCount >= 1);
+        discordButton.setEnabled(enabled && selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
     }
 
     private void openSettings() {
@@ -644,6 +802,32 @@ public class MainFrame extends JFrame {
             return;
         }
         refreshScreenshots();
+    }
+
+    private void exitApplication() {
+        maybeDeleteScreenshotsOnExit();
+        dispose();
+        System.exit(0);
+    }
+
+    private void maybeDeleteScreenshotsOnExit() {
+        if (!config.isDeleteScreenshotsOnExit()) {
+            return;
+        }
+        String screenshotDir = config.getScreenshotDirectory();
+        if (screenshotDir == null || screenshotDir.isBlank()) {
+            return;
+        }
+        Path directory = Path.of(screenshotDir);
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try {
+            int deleted = new ScreenshotFolderCleanupService().deleteAllPng(directory);
+            LOG.info("Deleted " + deleted + " screenshot(s) on exit from " + directory);
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to delete screenshots on exit", e);
+        }
     }
 
     @Override

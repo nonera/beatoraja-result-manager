@@ -21,7 +21,8 @@ public record ScreenshotRecord(
         String postNotation,
         List<String> availableNotations,
         boolean notationEdited,
-        boolean resolvedFromPlayer
+        boolean resolvedFromPlayer,
+        boolean flagged
 ) {
     public String displayLevel() {
         if (!tableLevelNum.isBlank()) {
