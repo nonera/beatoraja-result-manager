@@ -20,6 +20,10 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AppConfig {
 
+    public static final int MIN_UI_FONT_SIZE = 10;
+    public static final int MAX_UI_FONT_SIZE = 24;
+    public static final int DEFAULT_UI_FONT_SIZE = 13;
+
     private static final Logger LOG = AppLogging.get(AppConfig.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -35,6 +39,9 @@ public class AppConfig {
     private String discordAutoPostWebhookName = "";
     private Boolean autoUpdateEnabled;
     private boolean deleteScreenshotsOnExit;
+    private String uiTheme = "";
+    private String uiFontFamily = "";
+    private int uiFontSize;
     private List<String> tablePriorityOrder = new ArrayList<>();
     private List<TableNotationRule> tableNotationRules = new ArrayList<>();
     private String twitterBrowser = "";
@@ -176,6 +183,34 @@ public class AppConfig {
 
     public void setDeleteScreenshotsOnExit(boolean deleteScreenshotsOnExit) {
         this.deleteScreenshotsOnExit = deleteScreenshotsOnExit;
+    }
+
+    /** Returns {@code "dark"} or {@code "light"}; dark is the default. */
+    public String getUiTheme() {
+        return "light".equalsIgnoreCase(uiTheme) ? "light" : "dark";
+    }
+
+    public void setUiTheme(String uiTheme) {
+        this.uiTheme = "light".equalsIgnoreCase(uiTheme) ? "light" : "dark";
+    }
+
+    /** Empty means "pick the first available Japanese-capable UI font". */
+    public String getUiFontFamily() {
+        return uiFontFamily == null ? "" : uiFontFamily;
+    }
+
+    public void setUiFontFamily(String uiFontFamily) {
+        this.uiFontFamily = uiFontFamily == null ? "" : uiFontFamily.trim();
+    }
+
+    public int getUiFontSize() {
+        return uiFontSize < MIN_UI_FONT_SIZE || uiFontSize > MAX_UI_FONT_SIZE
+                ? DEFAULT_UI_FONT_SIZE
+                : uiFontSize;
+    }
+
+    public void setUiFontSize(int uiFontSize) {
+        this.uiFontSize = Math.min(MAX_UI_FONT_SIZE, Math.max(MIN_UI_FONT_SIZE, uiFontSize));
     }
 
     public List<String> getTablePriorityOrder() {
