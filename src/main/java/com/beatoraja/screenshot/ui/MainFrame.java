@@ -50,7 +50,9 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -71,6 +73,7 @@ public class MainFrame extends JFrame {
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
     private final List<ScreenshotEntry> postOrderEntries = new ArrayList<>();
+    private final Map<String, String> customPostTextByFile = new LinkedHashMap<>();
     private final JLabel statusLabel = new JLabel("準備中...");
     private final JLabel selectionCountLabel = new JLabel();
     private final JProgressBar indexProgressBar = new JProgressBar();
@@ -99,6 +102,7 @@ public class MainFrame extends JFrame {
                 movePostOrderEntry(index, index + 1);
             }
         });
+        previewPanel.setMessageChangeListener(customPostTextByFile::put);
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
@@ -286,6 +290,7 @@ public class MainFrame extends JFrame {
     private void syncPostOrder(List<ScreenshotEntry> newlySelected) {
         if (newlySelected == null || newlySelected.isEmpty()) {
             postOrderEntries.clear();
+            customPostTextByFile.clear();
             return;
         }
 
@@ -313,12 +318,13 @@ public class MainFrame extends JFrame {
 
         postOrderEntries.clear();
         postOrderEntries.addAll(kept);
+        // Forget edits for images that dropped out of the selection, so re-selecting
+        // them later (or a different image reusing the same file name) starts fresh.
+        customPostTextByFile.keySet().retainAll(selectedNames);
     }
 
     private void refreshPostPreview() {
-        List<String> postNotations = resolvePostNotations(postOrderEntries);
-        String message = TweetTextGenerator.generate(postOrderEntries, postNotations);
-        previewPanel.showEntries(postOrderEntries, message);
+        previewPanel.showEntries(postOrderEntries, buildMessagesByFile(postOrderEntries));
     }
 
     private void movePostOrderEntry(int fromIndex, int toIndex) {
@@ -327,6 +333,32 @@ public class MainFrame extends JFrame {
         }
         Collections.swap(postOrderEntries, fromIndex, toIndex);
         refreshPostPreview();
+    }
+
+    /** The post text for one entry: the user's edit if there is one, otherwise the auto-generated caption. */
+    private String resolveEntryMessage(ScreenshotEntry entry) {
+        String custom = customPostTextByFile.get(entry.getFileName());
+        if (custom != null) {
+            return custom;
+        }
+        return TweetTextGenerator.generate(entry, resolvePostNotation(entry));
+    }
+
+    private Map<String, String> buildMessagesByFile(List<ScreenshotEntry> entries) {
+        Map<String, String> messages = new LinkedHashMap<>();
+        for (ScreenshotEntry entry : entries) {
+            messages.put(entry.getFileName(), resolveEntryMessage(entry));
+        }
+        return messages;
+    }
+
+    /** Joins each entry's own post text, in order, into the caption sent for one post/batch. */
+    private String mergeMessages(List<ScreenshotEntry> entries) {
+        List<String> lines = new ArrayList<>();
+        for (ScreenshotEntry entry : entries) {
+            lines.add(resolveEntryMessage(entry));
+        }
+        return String.join("\n", lines);
     }
 
     private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
@@ -551,6 +583,7 @@ public class MainFrame extends JFrame {
         if (selected.isEmpty()) {
             return;
         }
+        Map<String, String> messageSnapshot = buildMessagesByFile(selected);
 
         TwitterAuthService authService = new TwitterAuthService(config);
         if (!authService.hasStoredSession()) {
@@ -578,8 +611,8 @@ public class MainFrame extends JFrame {
                 SwingUtilities.invokeLater(() ->
                         statusLabel.setText("Twitter 投稿 (" + batchNumber + "/" + batches.size()
                                 + ") — ブラウザで投稿してください..."));
-                List<String> notations = resolvePostNotations(batch);
-                String text = TweetTextGenerator.generate(batch, notations);
+                String text = batch.stream().map(e -> messageSnapshot.get(e.getFileName()))
+                        .collect(Collectors.joining("\n"));
                 List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
                 ClixService.PostResult result = clixService.post(text, imagePaths);
                 if (result.success()) {
@@ -644,6 +677,7 @@ public class MainFrame extends JFrame {
         if (selected.isEmpty()) {
             return;
         }
+        Map<String, String> messageSnapshot = buildMessagesByFile(selected);
 
         AppConfig.DiscordWebhookEntry webhook = (AppConfig.DiscordWebhookEntry) discordWebhookCombo.getSelectedItem();
         if (webhook == null || webhook.getUrl() == null || webhook.getUrl().isBlank()) {
@@ -667,8 +701,8 @@ public class MainFrame extends JFrame {
                 int batchNumber = i + 1;
                 SwingUtilities.invokeLater(() ->
                         statusLabel.setText("Discord に送信中... (" + batchNumber + "/" + batches.size() + ")"));
-                List<String> notations = resolvePostNotations(batch);
-                String message = TweetTextGenerator.generate(batch, notations);
+                String message = batch.stream().map(e -> messageSnapshot.get(e.getFileName()))
+                        .collect(Collectors.joining("\n"));
                 List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
                 DiscordWebhookService.PostResult result =
                         discordWebhookService.post(webhook.getUrl(), message, imagePaths);

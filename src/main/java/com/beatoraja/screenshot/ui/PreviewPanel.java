@@ -32,13 +32,26 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * Shows the currently selected screenshot(s) and lets the user edit the post text.
+ * With multiple images, each image owns its own text field (keyed by file name in
+ * {@link MessageChangeListener} callbacks) instead of one shared block of text, so
+ * reordering or deleting a line can never desynchronize a caption from its image.
+ * With a single image, that same per-image field sits in the message card below it -
+ * there is no separate shared text box.
+ */
 public class PreviewPanel extends JPanel {
 
     public interface PostOrderChangeListener {
         void onMoveUp(int index);
 
         void onMoveDown(int index);
+    }
+
+    public interface MessageChangeListener {
+        void onMessageChanged(String fileName, String text);
     }
 
     private static final String CARD_SINGLE = "single";
@@ -48,6 +61,9 @@ public class PreviewPanel extends JPanel {
     private static final DateTimeFormatter CAPTURED_AT = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
 
     private PostOrderChangeListener postOrderChangeListener;
+    private MessageChangeListener messageChangeListener;
+    private boolean programmaticTextUpdate;
+    private String singleEntryFileName;
 
     private final JLabel headerTitleLabel = new JLabel();
     private final JLabel headerDateLabel = new JLabel();
@@ -56,8 +72,8 @@ public class PreviewPanel extends JPanel {
     private final JPanel multiPreviewPanel = new JPanel();
     private final JScrollPane multiScrollPane = new JScrollPane(multiPreviewPanel);
     private final JPanel imageCards = new JPanel(new CardLayout());
-    private final JTextArea messageArea = new JTextArea(3, 40);
-    private final JLabel messageCountLabel = new JLabel();
+    private final JTextArea singleMessageArea = new JTextArea(3, 40);
+    private final JLabel singleMessageCountLabel = new JLabel();
 
     public PreviewPanel() {
         setLayout(new BorderLayout(0, 8));
@@ -117,38 +133,39 @@ public class PreviewPanel extends JPanel {
         return card;
     }
 
+    /** The single-image case's message card. With multiple images, each row has its own instead. */
     private JPanel buildMessageCard() {
-        messageArea.setLineWrap(false);
-        messageArea.setRows(3);
-        messageArea.setOpaque(false);
-        messageArea.setBorder(new EmptyBorder(4, 4, 4, 4));
-        messageArea.getDocument().addDocumentListener(new DocumentListener() {
+        singleMessageArea.setLineWrap(false);
+        singleMessageArea.setRows(3);
+        singleMessageArea.setOpaque(false);
+        singleMessageArea.setBorder(new EmptyBorder(4, 4, 4, 4));
+        singleMessageArea.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                updateMessageCount();
+                onSingleMessageTextChanged();
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                updateMessageCount();
+                onSingleMessageTextChanged();
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                updateMessageCount();
+                onSingleMessageTextChanged();
             }
         });
 
         JLabel caption = new JLabel("投稿文");
         caption.setForeground(UiTheme.mutedText());
-        messageCountLabel.setForeground(UiTheme.mutedText());
+        singleMessageCountLabel.setForeground(UiTheme.mutedText());
 
         JPanel captionRow = new JPanel(new BorderLayout());
         captionRow.setOpaque(false);
         captionRow.add(caption, BorderLayout.WEST);
-        captionRow.add(messageCountLabel, BorderLayout.EAST);
+        captionRow.add(singleMessageCountLabel, BorderLayout.EAST);
 
-        JScrollPane messageScroll = new JScrollPane(messageArea);
+        JScrollPane messageScroll = new JScrollPane(singleMessageArea);
         messageScroll.setBorder(new EmptyBorder(0, 0, 0, 0));
         messageScroll.setOpaque(false);
         messageScroll.getViewport().setOpaque(false);
@@ -165,30 +182,56 @@ public class PreviewPanel extends JPanel {
         this.postOrderChangeListener = listener;
     }
 
-    public void showEntries(List<ScreenshotEntry> entries, String message) {
-        messageArea.setText(message == null ? "" : message);
+    public void setMessageChangeListener(MessageChangeListener listener) {
+        this.messageChangeListener = listener;
+    }
+
+    private void onSingleMessageTextChanged() {
+        updateMessageCount();
+        if (!programmaticTextUpdate && messageChangeListener != null && singleEntryFileName != null) {
+            messageChangeListener.onMessageChanged(singleEntryFileName, singleMessageArea.getText());
+        }
+    }
+
+    private void setSingleMessageText(String text) {
+        programmaticTextUpdate = true;
+        try {
+            singleMessageArea.setText(text == null ? "" : text);
+        } finally {
+            programmaticTextUpdate = false;
+        }
+    }
+
+    /**
+     * @param messagesByFile current post text for each entry, keyed by {@link ScreenshotEntry#getFileName()}
+     */
+    public void showEntries(List<ScreenshotEntry> entries, Map<String, String> messagesByFile) {
         multiPreviewPanel.removeAll();
         updateHeader(entries);
 
         if (entries == null || entries.isEmpty()) {
             imageCanvas.setImage(null);
             showImageCard(CARD_SINGLE);
-            messageArea.setRows(3);
+            singleEntryFileName = null;
+            setSingleMessageText("");
             revalidate();
             repaint();
             return;
         }
 
-        int lineCount = Math.max(1, message == null ? 0 : message.split("\n", -1).length);
-        messageArea.setRows(Math.min(Math.max(3, lineCount), 8));
-
         if (entries.size() == 1) {
+            ScreenshotEntry entry = entries.get(0);
             showImageCard(CARD_SINGLE);
-            imageCanvas.setImage(readImage(entries.get(0)));
+            imageCanvas.setImage(readImage(entry));
+            singleEntryFileName = entry.getFileName();
+            setSingleMessageText(messagesByFile == null ? "" : messagesByFile.get(entry.getFileName()));
         } else {
             showImageCard(CARD_MULTI);
+            singleEntryFileName = null;
             for (int i = 0; i < entries.size(); i++) {
-                multiPreviewPanel.add(buildMultiPreviewRow(entries, entries.get(i), i));
+                ScreenshotEntry entry = entries.get(i);
+                String text = messagesByFile == null ? "" : messagesByFile.get(entry.getFileName());
+                multiPreviewPanel.add(buildMultiPreviewRow(entries, entry, i, text));
                 if (i < entries.size() - 1) {
                     multiPreviewPanel.add(Box.createVerticalStrut(8));
                 }
@@ -198,10 +241,6 @@ public class PreviewPanel extends JPanel {
 
         revalidate();
         repaint();
-    }
-
-    public String getMessage() {
-        return messageArea.getText();
     }
 
     private void updateHeader(List<ScreenshotEntry> entries) {
@@ -252,9 +291,13 @@ public class PreviewPanel extends JPanel {
     }
 
     private void updateMessageCount() {
-        int weighted = weightedLength(messageArea.getText());
-        messageCountLabel.setText(weighted + " / " + TWEET_WEIGHTED_LIMIT);
-        messageCountLabel.setForeground(weighted > TWEET_WEIGHTED_LIMIT
+        updateWeightedCountLabel(singleMessageCountLabel, singleMessageArea.getText());
+    }
+
+    private static void updateWeightedCountLabel(JLabel label, String text) {
+        int weighted = weightedLength(text);
+        label.setText(weighted + " / " + TWEET_WEIGHTED_LIMIT);
+        label.setForeground(weighted > TWEET_WEIGHTED_LIMIT
                 ? new java.awt.Color(0xE8484F)
                 : UiTheme.mutedText());
     }
@@ -284,7 +327,7 @@ public class PreviewPanel extends JPanel {
                 || (codePoint >= 0x20000 && codePoint <= 0x3FFFD);
     }
 
-    private JPanel buildMultiPreviewRow(List<ScreenshotEntry> entries, ScreenshotEntry entry, int index) {
+    private JPanel buildMultiPreviewRow(List<ScreenshotEntry> entries, ScreenshotEntry entry, int index, String text) {
         CardPanel row = new CardPanel(new BorderLayout(8, 0));
         row.setBorder(new EmptyBorder(6, 8, 6, 8));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -313,9 +356,71 @@ public class PreviewPanel extends JPanel {
         JLabel thumb = new JLabel(loadScaledImage(entry, MULTI_PREVIEW_WIDTH, 900));
         thumb.setToolTipText(entry.getFileName());
 
+        JPanel content = new JPanel(new BorderLayout(0, 4));
+        content.setOpaque(false);
+        content.add(thumb, BorderLayout.NORTH);
+        content.add(buildRowMessageArea(entry.getFileName(), text), BorderLayout.CENTER);
+
         row.add(controls, BorderLayout.WEST);
-        row.add(thumb, BorderLayout.CENTER);
+        row.add(content, BorderLayout.CENTER);
         return row;
+    }
+
+    /**
+     * Text is set via the constructor, before the listener below is attached, so seeding
+     * it here never reports back as a user edit.
+     */
+    private JPanel buildRowMessageArea(String fileName, String text) {
+        JTextArea entryMessageArea = new JTextArea(text == null ? "" : text, 2, 30);
+        entryMessageArea.setLineWrap(true);
+        entryMessageArea.setWrapStyleWord(true);
+        entryMessageArea.setOpaque(false);
+        entryMessageArea.setBorder(new EmptyBorder(4, 4, 4, 4));
+
+        JLabel countLabel = new JLabel();
+        countLabel.setForeground(UiTheme.mutedText());
+        updateWeightedCountLabel(countLabel, entryMessageArea.getText());
+
+        entryMessageArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                fire();
+            }
+
+            private void fire() {
+                updateWeightedCountLabel(countLabel, entryMessageArea.getText());
+                if (messageChangeListener != null) {
+                    messageChangeListener.onMessageChanged(fileName, entryMessageArea.getText());
+                }
+            }
+        });
+
+        JScrollPane messageScroll = new JScrollPane(entryMessageArea);
+        messageScroll.setBorder(new EmptyBorder(0, 0, 0, 0));
+        messageScroll.setOpaque(false);
+        messageScroll.getViewport().setOpaque(false);
+        messageScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        messageScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        JPanel countRow = new JPanel(new BorderLayout());
+        countRow.setOpaque(false);
+        countRow.add(countLabel, BorderLayout.EAST);
+
+        JPanel panel = new JPanel(new BorderLayout(0, 2));
+        panel.setOpaque(false);
+        panel.add(messageScroll, BorderLayout.CENTER);
+        panel.add(countRow, BorderLayout.SOUTH);
+        return panel;
     }
 
     private JButton orderButton(String text, boolean enabled, Runnable action) {
