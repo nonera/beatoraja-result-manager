@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "2.0.4"
+version = "2.0.5"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -108,10 +108,14 @@ tasks.register<Exec>("jpackageApp") {
         "--win-console",
         // --add-modules replaces jpackage's automatic jdeps-based module detection
         // rather than adding to it, so the full required set must be listed explicitly
-        // (verified via `jdeps --print-module-deps` against the shadow jar) plus
-        // jdk.localedata, which jdeps never reports since it's a resource-only module
-        // with no bytecode dependency - without it the bundled runtime's Japanese
-        // font/locale resolution silently falls back to a CJK-incapable font.
-        "--add-modules", "java.base,java.desktop,java.net.http,java.sql,jdk.localedata"
+        // (verified via `jdeps --print-module-deps` against the shadow jar), plus two
+        // modules jdeps' static analysis can't see because nothing references them in
+        // bytecode: jdk.localedata (a resource-only module - without it the bundled
+        // runtime's Japanese font/locale resolution silently falls back to a
+        // CJK-incapable font) and jdk.crypto.ec (loaded reflectively via the JCE
+        // provider SPI - without it, TLS handshakes against servers that negotiate an
+        // EC cipher suite, e.g. GitHub for the auto-updater's release check, hang/fail
+        // instead of erroring clearly).
+        "--add-modules", "java.base,java.desktop,java.net.http,java.sql,jdk.localedata,jdk.crypto.ec"
     )
 }
