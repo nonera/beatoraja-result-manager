@@ -52,7 +52,6 @@ public class Main {
         SwingUtilities.invokeLater(() -> {
             UpdateProgressDialog dialog = new UpdateProgressDialog();
             dialogRef.set(dialog);
-            dialog.setVisible(true);
 
             Thread worker = new Thread(() -> {
                 try {
@@ -83,6 +82,10 @@ public class Main {
             }, "app-update");
             worker.setDaemon(false);
             worker.start();
+
+            // Modal, so this blocks the EDT until the worker above disposes it - it must
+            // start the worker first, or the dialog can never be dismissed to unblock this.
+            dialog.setVisible(true);
         });
 
         try {

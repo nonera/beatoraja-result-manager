@@ -50,7 +50,7 @@ jpackage `
     --java-options "-Dapp.dir=`$BINDIR" `
     --java-options "-Dfile.encoding=UTF-8" `
     --icon $iconPath `
-    --add-modules java.base,java.desktop,java.net.http,java.sql,jdk.localedata
+    --add-modules java.base,java.desktop,java.net.http,java.sql,jdk.localedata,jdk.crypto.ec
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
 }
