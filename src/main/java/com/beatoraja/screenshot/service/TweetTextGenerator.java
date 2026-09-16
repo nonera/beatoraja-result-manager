@@ -25,6 +25,42 @@ public final class TweetTextGenerator {
         );
     }
 
+    /**
+     * Same as {@link #generate(ScreenshotEntry, String)}, but truncates the title to at most
+     * {@code maxTitleWeightedLength} Twitter-weighted units (CJK counts as two), appending an
+     * ellipsis when the title had to be shortened. Used to fit a caption under the tweet
+     * length limit without touching the notation/clear type/rank.
+     */
+    public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength) {
+        return buildResult(
+                postNotation,
+                truncateToWeightedLength(entry.getTitle(), maxTitleWeightedLength),
+                entry.getClearType(),
+                entry.getRank(),
+                entry.getFileName()
+        );
+    }
+
+    private static String truncateToWeightedLength(String text, int maxWeighted) {
+        if (text == null || TweetTextLimits.weightedLength(text) <= maxWeighted) {
+            return text;
+        }
+        int budget = Math.max(0, maxWeighted - 1); // reserve 1 unit for the ellipsis
+        StringBuilder builder = new StringBuilder();
+        int used = 0;
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            int width = TweetTextLimits.weightedLength(new String(Character.toChars(codePoint)));
+            if (used + width > budget) {
+                break;
+            }
+            builder.appendCodePoint(codePoint);
+            used += width;
+            i += Character.charCount(codePoint);
+        }
+        return builder.append('…').toString();
+    }
+
     public static String generate(ScreenshotRecord record) {
         if (record == null) {
             return "";

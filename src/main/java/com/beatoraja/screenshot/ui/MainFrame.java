@@ -12,6 +12,7 @@ import com.beatoraja.screenshot.service.ScreenshotFolderCleanupService;
 import com.beatoraja.screenshot.service.ScreenshotScanner;
 import com.beatoraja.screenshot.service.ScreenshotWatcher;
 import com.beatoraja.screenshot.service.TweetTextGenerator;
+import com.beatoraja.screenshot.service.TweetTextLimits;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
@@ -23,6 +24,8 @@ import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
@@ -33,11 +36,16 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FlowLayout;
@@ -73,7 +81,6 @@ public class MainFrame extends JFrame {
     private final PreviewPanel previewPanel = new PreviewPanel();
     private final DatabasePanel databasePanel = new DatabasePanel();
     private final List<ScreenshotEntry> postOrderEntries = new ArrayList<>();
-    private final Map<String, String> customPostTextByFile = new LinkedHashMap<>();
     private final JLabel statusLabel = new JLabel("準備中...");
     private final JLabel selectionCountLabel = new JLabel();
     private final JProgressBar indexProgressBar = new JProgressBar();
@@ -101,8 +108,12 @@ public class MainFrame extends JFrame {
             public void onMoveDown(int index) {
                 movePostOrderEntry(index, index + 1);
             }
+
+            @Override
+            public void onReorder(int fromIndex, int toIndex) {
+                reorderPostOrderEntry(fromIndex, toIndex);
+            }
         });
-        previewPanel.setMessageChangeListener(customPostTextByFile::put);
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
@@ -119,6 +130,7 @@ public class MainFrame extends JFrame {
             }
         });
         setSize(1200, 760);
+        setMinimumSize(new Dimension(900, 600));
         setLocationRelativeTo(null);
     }
 
@@ -290,7 +302,6 @@ public class MainFrame extends JFrame {
     private void syncPostOrder(List<ScreenshotEntry> newlySelected) {
         if (newlySelected == null || newlySelected.isEmpty()) {
             postOrderEntries.clear();
-            customPostTextByFile.clear();
             return;
         }
 
@@ -318,9 +329,6 @@ public class MainFrame extends JFrame {
 
         postOrderEntries.clear();
         postOrderEntries.addAll(kept);
-        // Forget edits for images that dropped out of the selection, so re-selecting
-        // them later (or a different image reusing the same file name) starts fresh.
-        customPostTextByFile.keySet().retainAll(selectedNames);
     }
 
     private void refreshPostPreview() {
@@ -335,12 +343,19 @@ public class MainFrame extends JFrame {
         refreshPostPreview();
     }
 
-    /** The post text for one entry: the user's edit if there is one, otherwise the auto-generated caption. */
-    private String resolveEntryMessage(ScreenshotEntry entry) {
-        String custom = customPostTextByFile.get(entry.getFileName());
-        if (custom != null) {
-            return custom;
+    /** Drag-and-drop reorder: unlike {@link #movePostOrderEntry}, this moves rather than swaps. */
+    private void reorderPostOrderEntry(int fromIndex, int toIndex) {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= postOrderEntries.size()
+                || toIndex >= postOrderEntries.size() || fromIndex == toIndex) {
+            return;
         }
+        ScreenshotEntry moved = postOrderEntries.remove(fromIndex);
+        postOrderEntries.add(toIndex, moved);
+        refreshPostPreview();
+    }
+
+    /** The auto-generated post text for one entry; final wording is fixed in the pre-post confirmation dialog. */
+    private String resolveEntryMessage(ScreenshotEntry entry) {
         return TweetTextGenerator.generate(entry, resolvePostNotation(entry));
     }
 
@@ -578,12 +593,164 @@ public class MainFrame extends JFrame {
     private record AutoDiscordPostResult(int postedCount, List<ScreenshotEntry> failedEntries, String errorMessage) {
     }
 
+    private static String joinBatchText(List<ScreenshotEntry> batch, Map<String, String> messagesByFile) {
+        return batch.stream().map(e -> messagesByFile.get(e.getFileName())).collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * Titles are never auto-shortened past this many weighted units. Kept generous
+     * (~15 Japanese characters) since the notation/comment portion of a caption is
+     * typically at most ~100 characters, not the reason a post goes over the limit, and
+     * because the confirmation dialog shown before posting is a manual-edit fallback for
+     * whatever this can't fix automatically - there's no need to crush titles further.
+     */
+    private static final int TITLE_MIN_WEIGHTED_LENGTH = 30;
+
+    /**
+     * If a batch's joined caption is over the limit, shortens entries' titles - longest
+     * title first - until it fits or no more can be shortened. Returns the file names it
+     * abbreviated.
+     */
+    private List<String> abbreviateBatchIfOverLimit(List<ScreenshotEntry> batch, Map<String, String> messagesByFile) {
+        List<String> abbreviated = new ArrayList<>();
+        int over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
+        if (over <= 0) {
+            return abbreviated;
+        }
+
+        List<ScreenshotEntry> candidates = new ArrayList<>(batch);
+        candidates.sort((a, b) -> Integer.compare(
+                TweetTextLimits.weightedLength(b.getTitle()), TweetTextLimits.weightedLength(a.getTitle())));
+
+        for (ScreenshotEntry entry : candidates) {
+            if (over <= 0) {
+                break;
+            }
+            int titleWeighted = TweetTextLimits.weightedLength(entry.getTitle());
+            int targetTitleWeighted = Math.max(TITLE_MIN_WEIGHTED_LENGTH, titleWeighted - over - 1);
+            if (targetTitleWeighted >= titleWeighted) {
+                continue;
+            }
+            messagesByFile.put(entry.getFileName(),
+                    TweetTextGenerator.generate(entry, resolvePostNotation(entry), targetTitleWeighted));
+            abbreviated.add(entry.getFileName());
+            over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
+        }
+        return abbreviated;
+    }
+
+    /**
+     * Shows the exact text that will be tweeted - merged per batch, editable right there -
+     * and asks the user to confirm before a browser is opened to actually post it. Since
+     * this is the last stop before posting, it also re-validates the 280-weighted-unit limit
+     * on every confirm attempt and won't let the user through until each batch fits or they
+     * cancel, looping with whatever they last typed preserved.
+     *
+     * @return the (possibly user-edited) text to post for each batch, or {@code null} if
+     *         the user canceled
+     */
+    private List<String> promptFinalPostTexts(List<List<ScreenshotEntry>> batches, Map<String, String> messagesByFile,
+            int abbreviatedCount) {
+        List<String> texts = new ArrayList<>();
+        for (List<ScreenshotEntry> batch : batches) {
+            texts.add(joinBatchText(batch, messagesByFile));
+        }
+
+        while (true) {
+            JPanel content = new JPanel();
+            content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+            if (abbreviatedCount > 0) {
+                content.add(new JLabel("※文字数制限のため、" + abbreviatedCount + " 件の曲名を自動的に省略しています。"));
+                content.add(Box.createVerticalStrut(8));
+            }
+
+            List<JTextArea> areas = new ArrayList<>();
+            for (int i = 0; i < batches.size(); i++) {
+                if (batches.size() > 1) {
+                    content.add(new JLabel((i + 1) + " 件目のツイート"));
+                }
+                JTextArea area = new JTextArea(texts.get(i), 6, 40);
+                area.setLineWrap(true);
+                area.setWrapStyleWord(true);
+                areas.add(area);
+
+                JLabel counter = new JLabel();
+                updateWeightedCountLabel(counter, area.getText());
+                area.getDocument().addDocumentListener((SimpleDocumentListener) () -> updateWeightedCountLabel(counter, area.getText()));
+
+                content.add(new JScrollPane(area));
+                content.add(counter);
+                content.add(Box.createVerticalStrut(8));
+            }
+
+            JScrollPane outer = new JScrollPane(content);
+            outer.setPreferredSize(new Dimension(460, 360));
+
+            int result = JOptionPane.showConfirmDialog(this, outer, "この内容で投稿しますか？",
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (result != JOptionPane.OK_OPTION) {
+                return null;
+            }
+
+            for (int i = 0; i < areas.size(); i++) {
+                texts.set(i, areas.get(i).getText());
+            }
+
+            List<String> overLimitBatches = new ArrayList<>();
+            for (int i = 0; i < texts.size(); i++) {
+                int weighted = TweetTextLimits.weightedLength(texts.get(i));
+                if (weighted > TweetTextLimits.WEIGHTED_LIMIT) {
+                    overLimitBatches.add((i + 1) + "件目: " + weighted + " / " + TweetTextLimits.WEIGHTED_LIMIT + " 文字");
+                }
+            }
+            if (overLimitBatches.isEmpty()) {
+                return texts;
+            }
+            abbreviatedCount = 0; // already shown once; don't repeat the note on every retry
+            JOptionPane.showMessageDialog(this,
+                    "文字数制限を超えています。修正してください。\n\n" + String.join("\n", overLimitBatches),
+                    "文字数オーバー", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private static void updateWeightedCountLabel(JLabel label, String text) {
+        int weighted = TweetTextLimits.weightedLength(text);
+        label.setText(weighted + " / " + TweetTextLimits.WEIGHTED_LIMIT);
+        label.setForeground(weighted > TweetTextLimits.WEIGHTED_LIMIT ? new Color(0xE8484F) : UiTheme.mutedText());
+    }
+
+    @FunctionalInterface
+    private interface SimpleDocumentListener extends DocumentListener {
+        void onChange();
+
+        @Override
+        default void insertUpdate(DocumentEvent e) {
+            onChange();
+        }
+
+        @Override
+        default void removeUpdate(DocumentEvent e) {
+            onChange();
+        }
+
+        @Override
+        default void changedUpdate(DocumentEvent e) {
+            onChange();
+        }
+    }
+
     private void postToTwitter() {
         List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
             return;
         }
         Map<String, String> messageSnapshot = buildMessagesByFile(selected);
+
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 4);
+        List<String> abbreviatedFileNames = new ArrayList<>();
+        for (List<ScreenshotEntry> batch : batches) {
+            abbreviatedFileNames.addAll(abbreviateBatchIfOverLimit(batch, messageSnapshot));
+        }
 
         TwitterAuthService authService = new TwitterAuthService(config);
         if (!authService.hasStoredSession()) {
@@ -595,8 +762,12 @@ public class MainFrame extends JFrame {
             }
         }
 
+        List<String> finalBatchTexts = promptFinalPostTexts(batches, messageSnapshot, abbreviatedFileNames.size());
+        if (finalBatchTexts == null) {
+            return;
+        }
+
         setPostingEnabled(false);
-        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 4);
         statusLabel.setText("Twitter 投稿 (0/" + batches.size() + ")");
         LOG.info("Twitter manual post started: " + selected.size() + " image(s), "
                 + batches.size() + " batch(es)");
@@ -611,8 +782,7 @@ public class MainFrame extends JFrame {
                 SwingUtilities.invokeLater(() ->
                         statusLabel.setText("Twitter 投稿 (" + batchNumber + "/" + batches.size()
                                 + ") — ブラウザで投稿してください..."));
-                String text = batch.stream().map(e -> messageSnapshot.get(e.getFileName()))
-                        .collect(Collectors.joining("\n"));
+                String text = finalBatchTexts.get(i);
                 List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
                 ClixService.PostResult result = clixService.post(text, imagePaths);
                 if (result.success()) {
