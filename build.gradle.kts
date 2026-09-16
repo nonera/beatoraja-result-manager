@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "2.0.2"
+version = "2.0.3"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -98,9 +98,20 @@ tasks.register<Exec>("jpackageApp") {
         "--main-jar", shadowJar.name,
         "--main-class", "com.beatoraja.screenshot.Main",
         "--dest", outputDir.absolutePath,
-        "--java-options", "-Dapp.dir=\$APP_DIR",
+        // $APPDIR is the "app" subfolder (containing the jar/cfg only) - the launcher
+        // .exe and the bundled tools/ folder live one level up, in $BINDIR (verified by
+        // logging both at runtime against an actual jpackage app-image; $APPDIR would
+        // silently break update-checking and the bundled clix.exe lookup).
+        "--java-options", "-Dapp.dir=\$BINDIR",
         "--java-options", "-Dfile.encoding=UTF-8",
         "--icon", iconFile.absolutePath,
-        "--win-console"
+        "--win-console",
+        // --add-modules replaces jpackage's automatic jdeps-based module detection
+        // rather than adding to it, so the full required set must be listed explicitly
+        // (verified via `jdeps --print-module-deps` against the shadow jar) plus
+        // jdk.localedata, which jdeps never reports since it's a resource-only module
+        // with no bytecode dependency - without it the bundled runtime's Japanese
+        // font/locale resolution silently falls back to a CJK-incapable font.
+        "--add-modules", "java.base,java.desktop,java.net.http,java.sql,jdk.localedata"
     )
 }

@@ -8,6 +8,7 @@ import com.beatoraja.screenshot.ui.UpdateProgressDialog;
 import com.beatoraja.screenshot.ui.theme.UiTheme;
 import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
+import com.beatoraja.screenshot.util.AppPaths;
 import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.JFrame;
@@ -25,6 +26,9 @@ public class Main {
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) ->
                 LOG.log(java.util.logging.Level.SEVERE,
                         "Uncaught exception in thread " + thread.getName(), throwable));
+
+        LOG.info("app.dir system property: " + System.getProperty("app.dir")
+                + " -> resolved exe directory: " + AppPaths.exeDir());
 
         AppConfig config = AppConfig.load();
         UiTheme.install(config.getUiTheme(), config.getUiFontFamily(), config.getUiFontSize());
