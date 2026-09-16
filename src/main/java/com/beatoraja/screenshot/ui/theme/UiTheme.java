@@ -43,6 +43,12 @@ public final class UiTheme {
     };
     /** Hiragana / katakana / kanji probe used to weed out Latin-only font families. */
     private static final String JAPANESE_SAMPLE = "あアー漢字";
+    /**
+     * Last-resort fallback when none of {@link #PREFERRED_FONTS} are reported as available.
+     * Meiryo ships with every Windows release since Vista, so it's used instead of the
+     * logical {@link Font#SANS_SERIF} font, which renders CJK text as tofu boxes.
+     */
+    private static final String FALLBACK_FONT = "Meiryo";
 
     private static boolean dark = true;
     private static String fontFamily = Font.SANS_SERIF;
@@ -195,6 +201,8 @@ public final class UiTheme {
                 return family;
             }
         }
-        return Font.SANS_SERIF;
+        LOG.warning("No preferred Japanese-capable font family was reported as available; "
+                + "falling back to " + FALLBACK_FONT);
+        return FALLBACK_FONT;
     }
 }

@@ -47,9 +47,10 @@ jpackage `
     --main-jar $shadowJar.Name `
     --main-class com.beatoraja.screenshot.Main `
     --dest (Join-Path $ProjectRoot "dist") `
-    --java-options "-Dapp.dir=`$APP_DIR" `
+    --java-options "-Dapp.dir=`$BINDIR" `
     --java-options "-Dfile.encoding=UTF-8" `
-    --icon $iconPath
+    --icon $iconPath `
+    --add-modules java.base,java.desktop,java.net.http,java.sql,jdk.localedata
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
 }

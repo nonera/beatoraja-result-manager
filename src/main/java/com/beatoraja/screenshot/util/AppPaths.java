@@ -62,7 +62,7 @@ public final class AppPaths {
 
     private static Path resolveExeDir() {
         String appDir = System.getProperty("app.dir");
-        if (appDir != null && !appDir.isBlank()) {
+        if (appDir != null && !appDir.isBlank() && Files.isDirectory(Paths.get(appDir))) {
             return Paths.get(appDir);
         }
 
