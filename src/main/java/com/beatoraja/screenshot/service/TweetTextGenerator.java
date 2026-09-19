@@ -1,10 +1,12 @@
 package com.beatoraja.screenshot.service;
 
+import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public final class TweetTextGenerator {
 
@@ -16,10 +18,15 @@ public final class TweetTextGenerator {
     }
 
     public static String generate(ScreenshotEntry entry, String postNotation) {
+        return generate(entry, postNotation, Map.of());
+    }
+
+    /** Same as {@link #generate(ScreenshotEntry, String)}, but with the clear lamp text swapped for the user's custom label, if any is configured for it. */
+    public static String generate(ScreenshotEntry entry, String postNotation, Map<String, String> clearLampLabels) {
         return buildResult(
                 postNotation,
                 entry.getTitle(),
-                entry.getClearType(),
+                ClearLampLabels.resolve(entry.getClearType(), clearLampLabels),
                 entry.getRank(),
                 entry.getFileName()
         );
@@ -32,10 +39,16 @@ public final class TweetTextGenerator {
      * length limit without touching the notation/clear type/rank.
      */
     public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength) {
+        return generate(entry, postNotation, maxTitleWeightedLength, Map.of());
+    }
+
+    /** Same as {@link #generate(ScreenshotEntry, String, int)}, with the clear lamp label override applied. */
+    public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength,
+            Map<String, String> clearLampLabels) {
         return buildResult(
                 postNotation,
                 truncateToWeightedLength(entry.getTitle(), maxTitleWeightedLength),
-                entry.getClearType(),
+                ClearLampLabels.resolve(entry.getClearType(), clearLampLabels),
                 entry.getRank(),
                 entry.getFileName()
         );
@@ -73,13 +86,19 @@ public final class TweetTextGenerator {
      * screenshot's info is included instead of only the first one.
      */
     public static String generate(List<ScreenshotEntry> entries, List<String> postNotations) {
+        return generate(entries, postNotations, Map.of());
+    }
+
+    /** Same as {@link #generate(List, List)}, with the clear lamp label override applied to each line. */
+    public static String generate(List<ScreenshotEntry> entries, List<String> postNotations,
+            Map<String, String> clearLampLabels) {
         if (entries == null || entries.isEmpty()) {
             return "";
         }
         List<String> lines = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             String notation = postNotations != null && i < postNotations.size() ? postNotations.get(i) : "";
-            lines.add(generate(entries.get(i), notation));
+            lines.add(generate(entries.get(i), notation, clearLampLabels));
         }
         return String.join("\n", lines);
     }

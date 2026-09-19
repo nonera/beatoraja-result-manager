@@ -49,6 +49,7 @@ public class AppConfig {
     private String twitterAuthToken = "";
     private String twitterCt0 = "";
     private Map<String, String> twitterCookies = new LinkedHashMap<>();
+    private Map<String, String> clearLampLabels = new LinkedHashMap<>();
 
     public static AppConfig load() {
         Path configFile = AppPaths.configFile();
@@ -289,6 +290,20 @@ public class AppConfig {
             twitterCookies.put("ct0", value);
         }
         this.twitterCt0 = "";
+    }
+
+    /** Custom clear lamp display names ("俗称"), keyed by the canonical, upper-cased clear type text. */
+    public Map<String, String> getClearLampLabels() {
+        return clearLampLabels;
+    }
+
+    public void setClearLampLabels(Map<String, String> clearLampLabels) {
+        this.clearLampLabels = clearLampLabels == null ? new LinkedHashMap<>() : new LinkedHashMap<>(clearLampLabels);
+    }
+
+    /** The custom label for {@code clearType} if one is configured, else {@code clearType} unchanged. */
+    public String resolveClearLampLabel(String clearType) {
+        return ClearLampLabels.resolve(clearType, clearLampLabels);
     }
 
     public boolean hasManualTwitterAuth() {

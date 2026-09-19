@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
@@ -33,7 +34,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -56,6 +59,7 @@ public class SettingsDialog extends JDialog {
     private final JComboBox<String> playerNameCombo = new JComboBox<>();
     private final JLabel twitterStatusLabel = new JLabel("未確認");
     private final WebhookTableModel webhookTableModel = new WebhookTableModel();
+    private final ClearLampLabelTableModel clearLampLabelTableModel = new ClearLampLabelTableModel();
     private final JCheckBox discordAutoPostEnabledBox = new JCheckBox("有効");
     private final JSpinner discordAutoPostBatchSpinner = new JSpinner(
             new SpinnerNumberModel(4, 1, 10, 1));
@@ -98,6 +102,8 @@ public class SettingsDialog extends JDialog {
         stack.add(fullWidth(buildTwitterSection()));
         stack.add(javax.swing.Box.createVerticalStrut(8));
         stack.add(fullWidth(buildWebhookSection()));
+        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(fullWidth(buildClearLampLabelSection()));
         stack.add(javax.swing.Box.createVerticalStrut(8));
         stack.add(fullWidth(buildDiscordAutoSection()));
         stack.add(javax.swing.Box.createVerticalStrut(8));
@@ -265,6 +271,32 @@ public class SettingsDialog extends JDialog {
         return section;
     }
 
+    private JPanel buildClearLampLabelSection() {
+        JTable table = new JTable(clearLampLabelTableModel);
+        table.getColumnModel().getColumn(0).setPreferredWidth(200);
+        table.getColumnModel().getColumn(1).setPreferredWidth(280);
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBorder(javax.swing.BorderFactory.createTitledBorder("クリアランプ表示名（俗称）"));
+        scroll.setPreferredSize(new java.awt.Dimension(520, 260));
+        scroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        JLabel hint = new JLabel("投稿文や一覧に表示するクリア名を俗称などに変更できます（空欄でデフォルト表示に戻ります）");
+        hint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        JButton resetAll = new JButton("すべてデフォルトに戻す");
+        resetAll.addActionListener(e -> clearLampLabelTableModel.setOverrides(Map.of()));
+        JPanel actions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
+        actions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        actions.add(resetAll);
+
+        JPanel section = new JPanel(new BorderLayout(0, 4));
+        section.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        section.add(hint, BorderLayout.NORTH);
+        section.add(scroll, BorderLayout.CENTER);
+        section.add(actions, BorderLayout.SOUTH);
+        return section;
+    }
+
     private JPanel buildDiscordAutoSection() {
         JPanel discordAutoPanel = new JPanel(new GridBagLayout());
         discordAutoPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -372,6 +404,7 @@ public class SettingsDialog extends JDialog {
         screenshotDirField.setText(config.getScreenshotDirectory());
         beatorajaDirField.setText(config.getBeatorajaDirectory());
         webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
+        clearLampLabelTableModel.setOverrides(config.getClearLampLabels());
         discordAutoPostEnabledBox.setSelected(config.isDiscordAutoPostEnabled());
         discordAutoPostBatchSpinner.setValue(config.getDiscordAutoPostBatchSize());
         reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
@@ -502,6 +535,7 @@ public class SettingsDialog extends JDialog {
         String playerName = String.valueOf(playerNameCombo.getEditor().getItem()).trim();
         config.setPlayerName(playerName);
         config.setDiscordWebhooks(webhookTableModel.getRows());
+        config.setClearLampLabels(clearLampLabelTableModel.getOverrides());
         String currentWebhookName = discordAutoPostWebhookCombo.getSelectedItem() == null
                 ? ""
                 : String.valueOf(discordAutoPostWebhookCombo.getSelectedItem()).trim();
@@ -524,6 +558,78 @@ public class SettingsDialog extends JDialog {
             dispose();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "保存に失敗しました: " + e.getMessage(), "エラー", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Fixed rows, one per canonical clear lamp type - unlike {@link WebhookTableModel} there is
+     * nothing to add or remove, only each row's custom display name to edit. A blank value means
+     * "use the default beatoraja name" and is dropped rather than stored.
+     */
+    private static class ClearLampLabelTableModel extends AbstractTableModel {
+        private final String[] columns = {"クリアランプ", "表示名（空欄でデフォルト）"};
+        private final List<String> canonicalTypes = ClearLampLabels.CANONICAL_ORDER;
+        private Map<String, String> overrides = new LinkedHashMap<>();
+
+        public void setOverrides(Map<String, String> overrides) {
+            this.overrides = new LinkedHashMap<>(overrides == null ? Map.of() : overrides);
+            fireTableDataChanged();
+        }
+
+        public Map<String, String> getOverrides() {
+            Map<String, String> result = new LinkedHashMap<>();
+            for (String type : canonicalTypes) {
+                String value = overrides.get(type);
+                if (value != null && !value.isBlank()) {
+                    result.put(type, value.trim());
+                }
+            }
+            return result;
+        }
+
+        @Override
+        public int getRowCount() {
+            return canonicalTypes.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public boolean isCellEditable(int rowIndex, int columnIndex) {
+            return columnIndex == 1;
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            String type = canonicalTypes.get(rowIndex);
+            if (columnIndex == 0) {
+                return type;
+            }
+            String value = overrides.get(type);
+            return value == null ? "" : value;
+        }
+
+        @Override
+        public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+            if (columnIndex != 1) {
+                return;
+            }
+            String type = canonicalTypes.get(rowIndex);
+            String text = aValue == null ? "" : String.valueOf(aValue).trim();
+            if (text.isBlank()) {
+                overrides.remove(type);
+            } else {
+                overrides.put(type, text);
+            }
+            fireTableCellUpdated(rowIndex, columnIndex);
         }
     }
 
