@@ -18,12 +18,24 @@ public class BadgeCellRenderer extends DefaultTableCellRenderer {
 
     private final Function<String, Color> colorResolver;
     private final boolean centered;
+    private final Function<String, String> labelResolver;
     private String badgeText = "";
     private Color badgeColor = Color.GRAY;
 
     public BadgeCellRenderer(Function<String, Color> colorResolver, boolean centered) {
+        this(colorResolver, centered, Function.identity());
+    }
+
+    /**
+     * @param labelResolver maps the cell's raw value to the text actually drawn in the badge
+     *         (e.g. a user-configured display name), while {@code colorResolver} still sees
+     *         the raw value so custom labels don't break color lookups keyed by the original text
+     */
+    public BadgeCellRenderer(Function<String, Color> colorResolver, boolean centered,
+            Function<String, String> labelResolver) {
         this.colorResolver = colorResolver;
         this.centered = centered;
+        this.labelResolver = labelResolver;
     }
 
     @Override
@@ -31,8 +43,9 @@ public class BadgeCellRenderer extends DefaultTableCellRenderer {
             boolean hasFocus, int row, int column) {
         super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column);
         String text = value == null ? "" : String.valueOf(value).trim();
-        badgeText = "-".equals(text) ? "" : text;
-        badgeColor = colorResolver.apply(badgeText);
+        String rawText = "-".equals(text) ? "" : text;
+        badgeColor = colorResolver.apply(rawText);
+        badgeText = rawText.isEmpty() ? "" : labelResolver.apply(rawText);
         setFont(table.getFont().deriveFont(Font.BOLD, table.getFont().getSize2D() - 1f));
         setToolTipText(badgeText.isEmpty() ? null : badgeText);
         return this;

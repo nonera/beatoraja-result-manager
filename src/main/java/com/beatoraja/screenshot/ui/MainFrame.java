@@ -117,6 +117,7 @@ public class MainFrame extends JFrame {
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
+        applyClearLampLabels();
         syncSymbolPriorityOrder();
         reloadDiscordWebhooks();
         reloadDatabaseQuietly();
@@ -354,9 +355,15 @@ public class MainFrame extends JFrame {
         refreshPostPreview();
     }
 
+    /** Pushes the current custom clear lamp labels ("俗称") to the panels that display them. */
+    private void applyClearLampLabels() {
+        databasePanel.setClearLampLabels(config.getClearLampLabels());
+        previewPanel.setClearLampLabels(config.getClearLampLabels());
+    }
+
     /** The auto-generated post text for one entry; final wording is fixed in the pre-post confirmation dialog. */
     private String resolveEntryMessage(ScreenshotEntry entry) {
-        return TweetTextGenerator.generate(entry, resolvePostNotation(entry));
+        return TweetTextGenerator.generate(entry, resolvePostNotation(entry), config.getClearLampLabels());
     }
 
     private Map<String, String> buildMessagesByFile(List<ScreenshotEntry> entries) {
@@ -576,7 +583,7 @@ public class MainFrame extends JFrame {
     private AutoDiscordPostResult postDiscordBatch(List<ScreenshotEntry> entries,
             AppConfig.DiscordWebhookEntry webhook) {
         List<String> notations = resolvePostNotations(entries);
-        String message = TweetTextGenerator.generate(entries, notations);
+        String message = TweetTextGenerator.generate(entries, notations, config.getClearLampLabels());
         List<Path> imagePaths = entries.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         DiscordWebhookService discordWebhookService = new DiscordWebhookService();
@@ -632,7 +639,8 @@ public class MainFrame extends JFrame {
                 continue;
             }
             messagesByFile.put(entry.getFileName(),
-                    TweetTextGenerator.generate(entry, resolvePostNotation(entry), targetTitleWeighted));
+                    TweetTextGenerator.generate(entry, resolvePostNotation(entry), targetTitleWeighted,
+                            config.getClearLampLabels()));
             abbreviated.add(entry.getFileName());
             over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
         }
@@ -943,6 +951,7 @@ public class MainFrame extends JFrame {
             }
             reloadDiscordWebhooks();
             reloadTableRegistry();
+            applyClearLampLabels();
             refreshScreenshots();
             startWatcher();
         });
