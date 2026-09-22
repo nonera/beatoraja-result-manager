@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.beatoraja"
-version = "2.0.6"
+version = "2.0.7"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
