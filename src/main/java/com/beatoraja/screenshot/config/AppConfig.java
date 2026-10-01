@@ -44,6 +44,7 @@ public class AppConfig {
     private int uiFontSize;
     private List<String> tablePriorityOrder = new ArrayList<>();
     private List<TableNotationRule> tableNotationRules = new ArrayList<>();
+    private PostTextFormat postTextFormat = PostTextFormat.defaults();
     private String twitterBrowser = "";
     private String twitterChromeProfile = "";
     private String twitterAuthToken = "";
@@ -219,6 +220,14 @@ public class AppConfig {
 
     public void setTablePriorityOrder(List<String> tablePriorityOrder) {
         this.tablePriorityOrder = tablePriorityOrder == null ? new ArrayList<>() : tablePriorityOrder;
+    }
+
+    public PostTextFormat getPostTextFormat() {
+        return postTextFormat;
+    }
+
+    public void setPostTextFormat(PostTextFormat postTextFormat) {
+        this.postTextFormat = postTextFormat == null ? PostTextFormat.defaults() : postTextFormat.normalized();
     }
 
     public List<TableNotationRule> getTableNotationRules() {

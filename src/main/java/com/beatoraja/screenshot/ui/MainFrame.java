@@ -1,9 +1,11 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.config.PostTextFormat;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.player.PlayScore;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
 import com.beatoraja.screenshot.service.PostBatchSplitter;
@@ -169,6 +171,9 @@ public class MainFrame extends JFrame {
         JMenuItem tableNotationRulesItem = new JMenuItem("難易度表ごとの投稿表記ルール...");
         tableNotationRulesItem.addActionListener(e -> openTableNotationRulesDialog());
         settingsMenu.add(tableNotationRulesItem);
+        JMenuItem postTextFormatItem = new JMenuItem("投稿文の書式...");
+        postTextFormatItem.addActionListener(e -> openPostTextFormatDialog());
+        settingsMenu.add(postTextFormatItem);
         menuBar.add(settingsMenu);
 
         JMenu helpMenu = new JMenu("ヘルプ");
@@ -356,7 +361,8 @@ public class MainFrame extends JFrame {
 
     /** The auto-generated post text for one entry; final wording is fixed in the pre-post confirmation dialog. */
     private String resolveEntryMessage(ScreenshotEntry entry) {
-        return TweetTextGenerator.generate(entry, resolvePostNotation(entry));
+        PostContext context = resolvePostContext(entry);
+        return TweetTextGenerator.generate(entry, context.notation(), context.score(), config.getPostTextFormat());
     }
 
     private Map<String, String> buildMessagesByFile(List<ScreenshotEntry> entries) {
@@ -376,33 +382,32 @@ public class MainFrame extends JFrame {
         return String.join("\n", lines);
     }
 
-    private List<String> resolvePostNotations(List<ScreenshotEntry> selectedEntries) {
-        List<String> notations = new ArrayList<>();
-        if (selectedEntries == null) {
-            return notations;
-        }
-        for (ScreenshotEntry entry : selectedEntries) {
-            notations.add(resolvePostNotation(entry));
-        }
-        return notations;
-    }
-
-    private String resolvePostNotation(ScreenshotEntry entry) {
+    /** The post notation (a user-chosen one saved in the DB wins) and the matched play's score, if any. */
+    private PostContext resolvePostContext(ScreenshotEntry entry) {
         if (entry == null) {
-            return "";
+            return new PostContext("", null);
         }
+        String savedNotation = "";
         try {
             if (screenshotDatabase != null) {
                 ScreenshotRecord record = screenshotDatabase.findByFilePath(entry.getFilePath());
-                if (record != null && !record.postNotation().isBlank()) {
-                    return record.postNotation();
+                if (record != null) {
+                    savedNotation = record.postNotation();
                 }
             }
-            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
-            return enriched.defaultPostNotation();
         } catch (Exception e) {
-            return "";
+            // fall through to the resolved default
         }
+        try {
+            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+            String notation = savedNotation.isBlank() ? enriched.defaultPostNotation() : savedNotation;
+            return new PostContext(notation, enriched.score());
+        } catch (Exception e) {
+            return new PostContext(savedNotation, null);
+        }
+    }
+
+    private record PostContext(String notation, PlayScore score) {
     }
 
     private void updateActionButtons(int selectedCount) {
@@ -575,8 +580,7 @@ public class MainFrame extends JFrame {
 
     private AutoDiscordPostResult postDiscordBatch(List<ScreenshotEntry> entries,
             AppConfig.DiscordWebhookEntry webhook) {
-        List<String> notations = resolvePostNotations(entries);
-        String message = TweetTextGenerator.generate(entries, notations);
+        String message = mergeMessages(entries);
         List<Path> imagePaths = entries.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         DiscordWebhookService discordWebhookService = new DiscordWebhookService();
@@ -631,8 +635,9 @@ public class MainFrame extends JFrame {
             if (targetTitleWeighted >= titleWeighted) {
                 continue;
             }
-            messagesByFile.put(entry.getFileName(),
-                    TweetTextGenerator.generate(entry, resolvePostNotation(entry), targetTitleWeighted));
+            PostContext context = resolvePostContext(entry);
+            messagesByFile.put(entry.getFileName(), TweetTextGenerator.generate(entry, context.notation(),
+                    context.score(), config.getPostTextFormat(), targetTitleWeighted));
             abbreviated.add(entry.getFileName());
             over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
         }
@@ -1010,6 +1015,22 @@ public class MainFrame extends JFrame {
             return;
         }
         refreshScreenshots();
+    }
+
+    private void openPostTextFormatDialog() {
+        PostTextFormat newFormat = new PostTextFormatDialog(this, config.getPostTextFormat()).showDialog();
+        if (newFormat == null) {
+            return;
+        }
+        config.setPostTextFormat(newFormat);
+        try {
+            config.save();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        refreshPostPreview();
     }
 
     private void openTableNotationRulesDialog() {

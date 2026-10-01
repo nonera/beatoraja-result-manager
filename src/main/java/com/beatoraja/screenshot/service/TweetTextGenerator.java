@@ -1,12 +1,17 @@
 package com.beatoraja.screenshot.service;
 
+import com.beatoraja.screenshot.config.PostTextFormat;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.player.PlayScore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class TweetTextGenerator {
+
+    private static final int NO_TITLE_LIMIT = Integer.MAX_VALUE;
 
     private TweetTextGenerator() {
     }
@@ -16,13 +21,7 @@ public final class TweetTextGenerator {
     }
 
     public static String generate(ScreenshotEntry entry, String postNotation) {
-        return buildResult(
-                postNotation,
-                entry.getTitle(),
-                entry.getClearType(),
-                entry.getRank(),
-                entry.getFileName()
-        );
+        return generate(entry, postNotation, null, PostTextFormat.defaults());
     }
 
     /**
@@ -32,13 +31,27 @@ public final class TweetTextGenerator {
      * length limit without touching the notation/clear type/rank.
      */
     public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength) {
-        return buildResult(
+        return generate(entry, postNotation, null, PostTextFormat.defaults(), maxTitleWeightedLength);
+    }
+
+    /**
+     * Builds the post text from {@code format}'s enabled items, in order. {@code score} is the
+     * matched play's judge counts; when null, score-derived items (BP, rate, ...) are omitted
+     * and the rank falls back to the one in the file name.
+     */
+    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format) {
+        return generate(entry, postNotation, score, format, NO_TITLE_LIMIT);
+    }
+
+    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
+            int maxTitleWeightedLength) {
+        return buildResult(format, new Values(
                 postNotation,
                 truncateToWeightedLength(entry.getTitle(), maxTitleWeightedLength),
                 entry.getClearType(),
                 entry.getRank(),
-                entry.getFileName()
-        );
+                score
+        ), entry.getFileName());
     }
 
     private static String truncateToWeightedLength(String text, int maxWeighted) {
@@ -65,7 +78,9 @@ public final class TweetTextGenerator {
         if (record == null) {
             return "";
         }
-        return buildResult(record.postNotation(), record.title(), record.clearType(), record.rank(), record.fileName());
+        return buildResult(PostTextFormat.defaults(),
+                new Values(record.postNotation(), record.title(), record.clearType(), record.rank(), null),
+                record.fileName());
     }
 
     /**
@@ -84,30 +99,46 @@ public final class TweetTextGenerator {
         return String.join("\n", lines);
     }
 
-    private static String buildResult(String postNotation, String title, String clearType, String rank, String fallback) {
-        StringBuilder builder = new StringBuilder();
-        if (postNotation != null && !postNotation.isBlank()) {
-            builder.append(postNotation.trim());
-        }
-        if (title != null && !title.isBlank()) {
-            if (builder.length() > 0) {
-                builder.append(' ');
+    private static String buildResult(PostTextFormat format, Values values, String fallback) {
+        PostTextFormat effective = format == null ? PostTextFormat.defaults() : format;
+        List<String> parts = new ArrayList<>();
+        for (PostTextFormat.Item item : effective.getItems()) {
+            if (!item.isEnabled()) {
+                continue;
             }
-            builder.append(title.trim());
-        }
-        if (clearType != null && !clearType.isBlank()) {
-            if (builder.length() > 0) {
-                builder.append(' ');
+            String value = valueOf(item.getKey(), values, effective);
+            if (value != null && !value.isBlank()) {
+                parts.add(item.getPrefix() + value.trim() + item.getSuffix());
             }
-            builder.append(clearType.trim());
         }
-        if (rank != null && !rank.isBlank()) {
-            if (builder.length() > 0) {
-                builder.append(' ');
-            }
-            builder.append(rank.trim());
-        }
-        String text = builder.toString().trim();
+        String text = String.join(" ", parts).trim();
         return text.isBlank() ? fallback : text;
+    }
+
+    private static String valueOf(String key, Values values, PostTextFormat format) {
+        PlayScore score = values.score();
+        return switch (key) {
+            case PostTextFormat.NOTATION -> values.postNotation();
+            case PostTextFormat.TITLE -> values.title();
+            case PostTextFormat.CLEAR -> values.clearType();
+            case PostTextFormat.RANK -> format.rankLabel(hasNotes(score) ? score.rank() : values.fileRank());
+            case PostTextFormat.BP -> score == null ? "" : String.valueOf(score.bp());
+            case PostTextFormat.RATE -> hasNotes(score) ? String.format(Locale.ROOT, "%.2f", score.ratePercent()) : "";
+            case PostTextFormat.EX_SCORE -> score == null ? "" : String.valueOf(score.exScore());
+            case PostTextFormat.RANK_DIFF -> hasNotes(score) ? formatDiff(score.nearestBoundaryDiff(), format) : "";
+            default -> "";
+        };
+    }
+
+    private static boolean hasNotes(PlayScore score) {
+        return score != null && score.notes() > 0;
+    }
+
+    private static String formatDiff(PlayScore.BoundaryDiff diff, PostTextFormat format) {
+        String sign = diff.diff() < 0 ? "-" : "+";
+        return format.rankLabel(diff.rankKey()) + sign + Math.abs(diff.diff());
+    }
+
+    private record Values(String postNotation, String title, String clearType, String fileRank, PlayScore score) {
     }
 }
