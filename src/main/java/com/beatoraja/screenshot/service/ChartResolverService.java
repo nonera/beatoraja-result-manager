@@ -4,6 +4,7 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
 import com.beatoraja.screenshot.player.ClearTypeMapper;
+import com.beatoraja.screenshot.player.PlayScore;
 import com.beatoraja.screenshot.player.PlayerPlayLogService;
 import com.beatoraja.screenshot.player.SongDatabaseService;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry;
@@ -150,7 +151,7 @@ public class ChartResolverService implements AutoCloseable {
                     : primaryNotation;
 
             return new ResolvedChart(sha256, md5, fullTitle, primaryNotation, defaultPostNotation,
-                    resolution.candidates(), song != null ? String.valueOf(song.level()) : "");
+                    resolution.candidates(), song != null ? String.valueOf(song.level()) : "", best.score());
         } catch (Exception e) {
             LOG.log(Level.FINE, "Failed to resolve chart from player data for " + entry.getFileName(), e);
             return null;
@@ -186,7 +187,8 @@ public class ChartResolverService implements AutoCloseable {
                 primaryNotation,
                 defaultPostNotation,
                 available,
-                entry.isBmsLevelOnly() ? entry.getLevel() : ""
+                entry.isBmsLevelOnly() ? entry.getLevel() : "",
+                null
         ));
     }
 
@@ -217,7 +219,8 @@ public class ChartResolverService implements AutoCloseable {
                 parsed.hasTableSymbol() ? parsed.level() : bmsLevel,
                 resolved.defaultPostNotation(),
                 available,
-                !resolved.sha256().isBlank()
+                !resolved.sha256().isBlank(),
+                resolved.score()
         );
     }
 
@@ -270,7 +273,8 @@ public class ChartResolverService implements AutoCloseable {
             String primaryNotation,
             String defaultPostNotation,
             List<String> availableNotations,
-            String bmsLevel
+            String bmsLevel,
+            PlayScore score
     ) {
     }
 }

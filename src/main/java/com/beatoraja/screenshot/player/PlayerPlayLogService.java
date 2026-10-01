@@ -11,12 +11,18 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public class PlayerPlayLogService implements AutoCloseable {
 
     private static final long BEFORE_WINDOW_SECONDS = 180;
     private static final long AFTER_WINDOW_SECONDS = 30;
+
+    private static final List<String> SCORE_COLUMNS = List.of(
+            "epg", "lpg", "egr", "lgr", "egd", "lgd", "ebd", "lbd", "epr", "lpr", "ems", "lms", "notes");
 
     private final boolean available;
     private final List<PlayLogEntry> entriesByDate = new ArrayList<>();
@@ -28,21 +34,46 @@ public class PlayerPlayLogService implements AutoCloseable {
         }
 
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + scoreDataLogDb.toAbsolutePath());
-             Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery("""
-                     SELECT sha256, clear, date
-                     FROM scoredatalog
-                     """)) {
-            while (rs.next()) {
-                entriesByDate.add(new PlayLogEntry(
-                        rs.getString("sha256"),
-                        rs.getInt("clear"),
-                        rs.getLong("date")
-                ));
+             Statement statement = connection.createStatement()) {
+            boolean hasScoreColumns = readColumns(statement).containsAll(SCORE_COLUMNS);
+            String columns = hasScoreColumns
+                    ? "sha256, clear, date, " + String.join(", ", SCORE_COLUMNS)
+                    : "sha256, clear, date";
+            try (ResultSet rs = statement.executeQuery("SELECT " + columns + " FROM scoredatalog")) {
+                while (rs.next()) {
+                    entriesByDate.add(new PlayLogEntry(
+                            rs.getString("sha256"),
+                            rs.getInt("clear"),
+                            rs.getLong("date"),
+                            hasScoreColumns ? readScore(rs) : null
+                    ));
+                }
             }
         }
         entriesByDate.sort(Comparator.comparingLong(PlayLogEntry::dateEpoch));
         available = true;
+    }
+
+    private static Set<String> readColumns(Statement statement) throws SQLException {
+        Set<String> columns = new HashSet<>();
+        try (ResultSet rs = statement.executeQuery("PRAGMA table_info(scoredatalog)")) {
+            while (rs.next()) {
+                columns.add(rs.getString("name").toLowerCase(Locale.ROOT));
+            }
+        }
+        return columns;
+    }
+
+    private static PlayScore readScore(ResultSet rs) throws SQLException {
+        return new PlayScore(
+                rs.getInt("epg"), rs.getInt("lpg"),
+                rs.getInt("egr"), rs.getInt("lgr"),
+                rs.getInt("egd"), rs.getInt("lgd"),
+                rs.getInt("ebd"), rs.getInt("lbd"),
+                rs.getInt("epr"), rs.getInt("lpr"),
+                rs.getInt("ems"), rs.getInt("lms"),
+                rs.getInt("notes")
+        );
     }
 
     public boolean isAvailable() {
@@ -100,6 +131,7 @@ public class PlayerPlayLogService implements AutoCloseable {
         entriesByDate.clear();
     }
 
-    public record PlayLogEntry(String sha256, int clearId, long dateEpoch) {
+    /** {@code score} is null when the scoredatalog table has no judge-count columns. */
+    public record PlayLogEntry(String sha256, int clearId, long dateEpoch, PlayScore score) {
     }
 }

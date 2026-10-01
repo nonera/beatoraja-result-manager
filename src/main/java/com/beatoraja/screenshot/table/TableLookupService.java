@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.table;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
+import com.beatoraja.screenshot.player.PlayScore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,9 @@ public class TableLookupService {
             String displayLevel,
             String defaultPostNotation,
             List<String> availableNotations,
-            boolean resolvedFromPlayerData
+            boolean resolvedFromPlayerData,
+            /** Judge counts of the matched play, or null when none / not recorded. */
+            PlayScore score
     ) {
         public EnrichedScreenshot(
                 ScreenshotEntry entry,
@@ -37,7 +40,7 @@ public class TableLookupService {
                 List<String> availableNotations
         ) {
             this(entry, "", "", entry.getTitle(), tableSymbol, tableLevelNum, "",
-                    displaySymbol, displayLevel, defaultPostNotation, availableNotations, false);
+                    displaySymbol, displayLevel, defaultPostNotation, availableNotations, false, null);
         }
 
         public List<String> mergedAvailableNotations() {
