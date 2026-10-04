@@ -593,6 +593,27 @@ public class MainFrame extends JFrame {
         List<ScreenshotEntry> pending = entries.stream()
                 .filter(entry -> !postedStateStore.get(entry.getFileName()).isDiscordPosted())
                 .collect(Collectors.toList());
+
+        // A queued screenshot's file may since have been deleted (e.g. from disk directly,
+        // bypassing the database panel's own queue cleanup). That file is gone for good, so
+        // requeuing it would just fail the same way forever and block every other queued
+        // image behind it - drop it instead of retrying. The rest of the batch wasn't actually
+        // ready yet (it's short of the configured batch size), so put it back in the queue to
+        // wait for new screenshots instead of posting an undersized batch now.
+        List<ScreenshotEntry> missing = pending.stream()
+                .filter(entry -> !Files.exists(entry.getFilePath()))
+                .collect(Collectors.toList());
+        if (!missing.isEmpty()) {
+            for (ScreenshotEntry entry : missing) {
+                LOG.warning("Discord auto-post: dropping queued image no longer on disk: " + entry.getFileName());
+            }
+            pending.removeAll(missing);
+            if (!pending.isEmpty()) {
+                discordAutoPostQueue.requeueFront(pending);
+            }
+            return new AutoDiscordPostResult(0, List.of(), null);
+        }
+
         if (pending.isEmpty()) {
             return new AutoDiscordPostResult(0, List.of(), null);
         }

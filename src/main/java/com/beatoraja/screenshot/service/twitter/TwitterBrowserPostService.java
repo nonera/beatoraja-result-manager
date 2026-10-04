@@ -119,10 +119,9 @@ public class TwitterBrowserPostService {
                 if (!attachImages(session, imagePaths)) {
                     return ClixService.PostResult.failed("画像の添付に失敗しました。");
                 }
-                if (!waitUntil(session, UPLOAD_TIMEOUT,
-                        "(function(){var b=document.querySelector('" + POST_BUTTON_SELECTOR + "');"
-                                + "return !!b && b.getAttribute('aria-disabled')!=='true';})()")) {
-                    return ClixService.PostResult.failed("画像のアップロード完了を確認できませんでした。");
+                String uploadError = waitForUploadToFinish(session);
+                if (uploadError != null) {
+                    return ClixService.PostResult.failed(uploadError);
                 }
             }
 
@@ -233,6 +232,48 @@ public class TwitterBrowserPostService {
         session.send("DOM.setFileInputFiles",
                 Map.of("nodeId", fileInputNodeId, "files", absolutePaths), COMMAND_TIMEOUT);
         return true;
+    }
+
+    /**
+     * Waits for attached images to finish uploading (the post button becoming enabled),
+     * but also watches for X's own error toast (e.g. "画像を読み込めませんでした" for a
+     * rejected file) so a real upload failure is reported with its actual message right
+     * away instead of surfacing as an unexplained {@link #UPLOAD_TIMEOUT} timeout that
+     * looks like a character-limit problem.
+     *
+     * @return {@code null} on success, otherwise a failure message to report
+     */
+    private String waitForUploadToFinish(ChromiumCdpSession session) throws Exception {
+        String toastTextExpression =
+                "(function(){var t=document.querySelector('[data-testid=\"toast\"]');"
+                        + "return t ? (t.innerText||'').trim() : '';})()";
+        String uploadDoneExpression =
+                "(function(){var b=document.querySelector('" + POST_BUTTON_SELECTOR + "');"
+                        + "return !!b && b.getAttribute('aria-disabled')!=='true';})()";
+
+        long deadline = System.currentTimeMillis() + UPLOAD_TIMEOUT.toMillis();
+        while (System.currentTimeMillis() < deadline) {
+            String toastText = evaluateString(session, toastTextExpression);
+            if (toastText != null && !toastText.isBlank()) {
+                return "画像のアップロードに失敗しました: " + toastText;
+            }
+            if (evaluateBoolean(session, uploadDoneExpression)) {
+                return null;
+            }
+            Thread.sleep(POLL_INTERVAL.toMillis());
+        }
+        return "画像のアップロード完了を確認できませんでした。";
+    }
+
+    private String evaluateString(ChromiumCdpSession session, String expression) throws Exception {
+        try {
+            JsonNode result = session.send("Runtime.evaluate",
+                    Map.of("expression", expression, "returnByValue", true), COMMAND_TIMEOUT);
+            JsonNode value = result.path("result").path("value");
+            return value.isTextual() ? value.asText() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean waitUntil(ChromiumCdpSession session, Duration timeout, String expression)
