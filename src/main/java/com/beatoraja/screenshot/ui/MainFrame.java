@@ -6,6 +6,7 @@ import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.PlayScore;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
 import com.beatoraja.screenshot.service.PostBatchSplitter;
@@ -43,6 +44,7 @@ import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -71,6 +73,7 @@ import java.util.stream.Collectors;
 public class MainFrame extends JFrame {
 
     private static final Logger LOG = AppLogging.get(MainFrame.class);
+    private static final int BMZ_RESOLVE_RETRY_MILLIS = 2000;
 
     private final AppConfig config;
     private PostedStateStore postedStateStore;
@@ -493,20 +496,26 @@ public class MainFrame extends JFrame {
         indexingWorker.execute();
     }
 
-    private void syncDatabaseEntry(ScreenshotEntry entry) {
-        if (screenshotDatabase == null) {
-            return;
-        }
+    /**
+     * Resolves and stores a newly detected screenshot, returning the entry as resolved. For
+     * BMZ Player screenshots that is where the song, lamp and rank come from, since their
+     * file names carry only the time.
+     */
+    private ScreenshotEntry syncDatabaseEntry(ScreenshotEntry entry) {
         // The new screenshot's play result may have just been written to
         // scoredatalog.db, after chartResolverService last loaded it, so
         // reload the player databases before resolving the sha256/md5.
         reloadTableRegistry();
-        try {
-            screenshotDatabase.upsert(chartResolverService.enrich(entry));
-            databasePanel.reload(screenshotDatabase);
-        } catch (SQLException e) {
-            statusLabel.setText("DB 更新失敗: " + e.getMessage());
+        TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+        if (screenshotDatabase != null) {
+            try {
+                screenshotDatabase.upsert(enriched);
+                databasePanel.reload(screenshotDatabase);
+            } catch (SQLException e) {
+                statusLabel.setText("DB 更新失敗: " + e.getMessage());
+            }
         }
+        return enriched.entry();
     }
 
     private void startWatcher() {
@@ -524,7 +533,18 @@ public class MainFrame extends JFrame {
 
     private void onScreenshotDetected(ScreenshotEntry entry) {
         LOG.info("Screenshot detected: " + entry.getFileName() + " (" + entry.getStateLabel() + ")");
-        syncDatabaseEntry(entry);
+        ScreenshotEntry resolved = syncDatabaseEntry(entry);
+        if (chartResolverService.getPlayerKind() == PlayerKind.BMZ && !resolved.isResultScreenshot()) {
+            // BMZ Player may still be saving the play to score.db; try once more shortly.
+            Timer retry = new Timer(BMZ_RESOLVE_RETRY_MILLIS, e -> offerToAutoPost(syncDatabaseEntry(entry)));
+            retry.setRepeats(false);
+            retry.start();
+            return;
+        }
+        offerToAutoPost(resolved);
+    }
+
+    private void offerToAutoPost(ScreenshotEntry entry) {
         int queueSizeBefore = discordAutoPostQueue.size();
         discordAutoPostQueue.offer(entry, postedStateStore);
         if (discordAutoPostQueue.size() > queueSizeBefore) {

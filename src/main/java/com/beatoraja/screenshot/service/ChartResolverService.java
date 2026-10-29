@@ -3,10 +3,15 @@ package com.beatoraja.screenshot.service;
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
+import com.beatoraja.screenshot.player.BmzPaths;
+import com.beatoraja.screenshot.player.BmzPlayLogService;
 import com.beatoraja.screenshot.player.ClearTypeMapper;
+import com.beatoraja.screenshot.player.PlayLogSource;
 import com.beatoraja.screenshot.player.PlayScore;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.player.PlayerPlayLogService;
 import com.beatoraja.screenshot.player.SongDatabaseService;
+import com.beatoraja.screenshot.table.BmzTableReader;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry;
 import com.beatoraja.screenshot.table.TableLevelParser;
 import com.beatoraja.screenshot.table.TableLookupService;
@@ -26,16 +31,22 @@ public class ChartResolverService implements AutoCloseable {
     private static final Logger LOG = AppLogging.get(ChartResolverService.class);
 
     private final DifficultyTableRegistry registry = new DifficultyTableRegistry();
-    private PlayerPlayLogService playLogService;
+    private PlayLogSource playLogService;
     private SongDatabaseService songDatabaseService;
     private Path beatorajaDirectory;
+    private PlayerKind playerKind = PlayerKind.UNKNOWN;
 
     public void reload(AppConfig config) throws IOException {
         closeConnections();
 
         beatorajaDirectory = config.resolveBeatorajaDirectory();
+        playerKind = PlayerKind.detect(beatorajaDirectory);
         if (beatorajaDirectory == null || !beatorajaDirectory.toFile().isDirectory()) {
             registry.clear();
+            return;
+        }
+        if (playerKind == PlayerKind.BMZ) {
+            reloadBmz(config);
             return;
         }
 
@@ -49,6 +60,23 @@ public class ChartResolverService implements AutoCloseable {
         } catch (java.sql.SQLException e) {
             throw new IOException("プレイヤーデータベースを開けません: " + e.getMessage(), e);
         }
+    }
+
+    private void reloadBmz(AppConfig config) throws IOException {
+        BmzPaths paths = BmzPaths.resolve(beatorajaDirectory, config.getPlayerName());
+        try {
+            registry.loadFromTables(BmzTableReader.readAll(paths.libraryDb()));
+            registry.setTablePriority(config.getTablePriorityOrder());
+            registry.setNotationRules(toRegistryRules(config.getTableNotationRules()));
+            playLogService = new BmzPlayLogService(paths.scoreDb());
+            songDatabaseService = SongDatabaseService.forBmzLibrary(paths.libraryDb());
+        } catch (java.sql.SQLException e) {
+            throw new IOException("BMZ Player のデータベースを開けません: " + e.getMessage(), e);
+        }
+    }
+
+    public PlayerKind getPlayerKind() {
+        return playerKind;
     }
 
     public List<DifficultyTableRegistry.TableInfo> getKnownTables() {
@@ -98,7 +126,7 @@ public class ChartResolverService implements AutoCloseable {
     public TableLookupService.EnrichedScreenshot enrich(ScreenshotEntry entry) {
         ResolvedChart resolved = resolveFromPlayerData(entry);
         if (resolved != null) {
-            return buildEnriched(entry, resolved);
+            return buildEnriched(withPlayResult(entry, resolved), resolved);
         }
         return enrichFromFilename(entry);
     }
@@ -151,7 +179,8 @@ public class ChartResolverService implements AutoCloseable {
                     : primaryNotation;
 
             return new ResolvedChart(sha256, md5, fullTitle, primaryNotation, defaultPostNotation,
-                    resolution.candidates(), song != null ? String.valueOf(song.level()) : "", best.score());
+                    resolution.candidates(), song != null ? String.valueOf(song.level()) : "", best.score(),
+                    best.clearId());
         } catch (Exception e) {
             LOG.log(Level.FINE, "Failed to resolve chart from player data for " + entry.getFileName(), e);
             return null;
@@ -188,8 +217,31 @@ public class ChartResolverService implements AutoCloseable {
                 defaultPostNotation,
                 available,
                 entry.isBmsLevelOnly() ? entry.getLevel() : "",
+                null,
                 null
         ));
+    }
+
+    /**
+     * BMZ Player screenshot names carry only the time, so once the play is found its song,
+     * lamp and rank stand in for what beatoraja would have written into the file name.
+     * beatoraja entries are returned unchanged.
+     */
+    private ScreenshotEntry withPlayResult(ScreenshotEntry entry, ResolvedChart resolved) {
+        if (playerKind != PlayerKind.BMZ || !entry.getStateLabel().isBlank()) {
+            return entry;
+        }
+        return new ScreenshotEntry(
+                entry.getFilePath(),
+                entry.getFileName(),
+                entry.getCapturedAt(),
+                "Result",
+                resolved.title(),
+                "",
+                resolved.bmsLevel(),
+                resolved.clearId() == null ? "" : ClearTypeMapper.toClearName(resolved.clearId()),
+                resolved.score() == null ? "" : resolved.score().rank()
+        );
     }
 
     private TableLookupService.EnrichedScreenshot buildEnriched(ScreenshotEntry entry, ResolvedChart resolved) {
@@ -274,7 +326,8 @@ public class ChartResolverService implements AutoCloseable {
             String defaultPostNotation,
             List<String> availableNotations,
             String bmsLevel,
-            PlayScore score
+            PlayScore score,
+            Integer clearId
     ) {
     }
 }

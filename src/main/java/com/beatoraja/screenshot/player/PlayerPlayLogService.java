@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public class PlayerPlayLogService implements AutoCloseable {
+public class PlayerPlayLogService implements PlayLogSource {
 
     private static final long BEFORE_WINDOW_SECONDS = 180;
     private static final long AFTER_WINDOW_SECONDS = 30;

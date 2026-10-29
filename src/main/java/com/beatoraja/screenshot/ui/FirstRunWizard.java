@@ -1,6 +1,8 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.player.BmzPaths;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 
@@ -55,7 +57,7 @@ public class FirstRunWizard extends JPanel {
 
         gbc.gridy++;
         gbc.gridwidth = 1;
-        form.add(new JLabel("beatoraja フォルダ"), gbc);
+        form.add(new JLabel("beatoraja / BMZ Player フォルダ"), gbc);
 
         gbc.gridx = 1;
         JPanel beatorajaPanel = new JPanel(new BorderLayout(6, 0));
@@ -68,7 +70,8 @@ public class FirstRunWizard extends JPanel {
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.gridwidth = 2;
-        form.add(new JLabel("screenshot/ フォルダを自動検出します"), gbc);
+        form.add(new JLabel("<html>beatoraja: config_sys.json のあるフォルダ（screenshot/ を自動検出）<br>"
+                + "BMZ Player: config.toml のある data フォルダ（スクショフォルダは config.toml から取得）</html>"), gbc);
 
         gbc.gridy++;
         form.add(new JLabel("Discord Webhook（任意）"), gbc);
@@ -134,20 +137,31 @@ public class FirstRunWizard extends JPanel {
     private void completeSetup() {
         File beatorajaDir = new File(beatorajaDirField.getText().trim());
         if (!beatorajaDir.isDirectory()) {
-            JOptionPane.showMessageDialog(this, "beatoraja フォルダを選択してください。", "入力エラー", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "beatoraja / BMZ Player フォルダを選択してください。", "入力エラー", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         File screenshotDir = new File(beatorajaDir, "screenshot");
+        if (PlayerKind.detect(beatorajaDir.toPath()) == PlayerKind.BMZ) {
+            try {
+                BmzPaths bmzPaths = BmzPaths.resolve(beatorajaDir.toPath(), "");
+                beatorajaDir = bmzPaths.dataDirectory().toFile();
+                screenshotDir = bmzPaths.screenshotDirectory().toFile();
+            } catch (java.io.IOException e) {
+                JOptionPane.showMessageDialog(this, "BMZ Player の config.toml を読み込めません: " + e.getMessage(),
+                        "エラー", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+        }
         if (!screenshotDir.isDirectory()) {
             int answer = JOptionPane.showConfirmDialog(
                     this,
-                    "screenshot フォルダが見つかりません。作成しますか？",
+                    screenshotDir.getName() + " フォルダが見つかりません。作成しますか？",
                     "確認",
                     JOptionPane.YES_NO_OPTION
             );
             if (answer != JOptionPane.YES_OPTION || !screenshotDir.mkdirs()) {
-                JOptionPane.showMessageDialog(this, "screenshot フォルダを用意してください。", "エラー", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, screenshotDir.getName() + " フォルダを用意してください。", "エラー", JOptionPane.ERROR_MESSAGE);
                 return;
             }
         }

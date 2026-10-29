@@ -3,7 +3,10 @@ package com.beatoraja.screenshot.parser;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 
 import java.nio.file.Path;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.regex.Matcher;
@@ -19,12 +22,22 @@ public final class FilenameParser {
             "EXHARD CLEAR", "HARD CLEAR", "FULL COMBO", "NO PLAY", "FAILED", "CLEAR", "PERFECT", "MAX"
     };
     private static final String[] RANKS = {"AAA", "AA", "A", "B", "C", "D", "E", "F"};
+    /**
+     * BMZ Player (F12): {@code bmz-screenshot-<unix millis>[-<n>|-overflow].png}. The name carries
+     * only the time; song, lamp and rank are filled in later from the player's score.db.
+     */
+    private static final Pattern BMZ_FILE_PATTERN =
+            Pattern.compile("^bmz-screenshot-(\\d+)(?:-(?:\\d+|overflow))?\\.png$", Pattern.CASE_INSENSITIVE);
 
     private FilenameParser() {
     }
 
     public static ScreenshotEntry parse(Path filePath) {
         String fileName = filePath.getFileName().toString();
+        Matcher bmzMatcher = BMZ_FILE_PATTERN.matcher(fileName);
+        if (bmzMatcher.matches()) {
+            return emptyEntry(filePath, fileName, parseEpochMillis(bmzMatcher.group(1)));
+        }
         Matcher matcher = FILE_PATTERN.matcher(fileName);
         if (!matcher.matches()) {
             return emptyEntry(filePath, fileName, null);
@@ -54,6 +67,14 @@ public final class FilenameParser {
         try {
             return LocalDateTime.parse(value, CAPTURED_AT);
         } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private static LocalDateTime parseEpochMillis(String value) {
+        try {
+            return LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(value)), ZoneId.systemDefault());
+        } catch (NumberFormatException | DateTimeException e) {
             return null;
         }
     }

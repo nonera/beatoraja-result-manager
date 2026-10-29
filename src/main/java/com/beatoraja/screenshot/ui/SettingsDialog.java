@@ -4,6 +4,8 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
+import com.beatoraja.screenshot.player.BmzPaths;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
@@ -161,12 +163,12 @@ public class SettingsDialog extends JDialog {
         gbc.gridwidth = 2;
         form.add(deleteScreenshotsOnExitBox, gbc);
         gbc.gridy++;
-        form.add(new JLabel("アプリ終了時に beatoraja の screenshot フォルダ内 PNG を削除します"), gbc);
+        form.add(new JLabel("アプリ終了時にスクショフォルダ内の PNG を削除します"), gbc);
 
         gbc.gridwidth = 1;
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("beatoraja フォルダ"), gbc);
+        form.add(new JLabel("beatoraja / BMZ フォルダ"), gbc);
         gbc.gridx = 1;
         JPanel beatorajaPanel = new JPanel(new BorderLayout(6, 0));
         beatorajaPanel.add(beatorajaDirField, BorderLayout.CENTER);
@@ -190,7 +192,8 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.gridwidth = 2;
-        form.add(new JLabel("空欄の場合は config_sys.json の playername を使用（scoredatalog.db 照合用）"), gbc);
+        form.add(new JLabel("<html>空欄の場合は beatoraja: config_sys.json の playername（scoredatalog.db 照合用）<br>"
+                + "BMZ Player: config.toml の active_profile（profiles/&lt;ID&gt;/score.db 照合用）を使用</html>"), gbc);
         return form;
     }
 
@@ -413,7 +416,10 @@ public class SettingsDialog extends JDialog {
         String beatorajaDirText = beatorajaDirField.getText().trim();
         if (!beatorajaDirText.isBlank()) {
             Path beatorajaDir = Path.of(beatorajaDirText);
-            for (String name : BeatorajaPaths.listPlayerNames(beatorajaDir)) {
+            List<String> names = PlayerKind.detect(beatorajaDir) == PlayerKind.BMZ
+                    ? BmzPaths.listProfileIds(beatorajaDir)
+                    : BeatorajaPaths.listPlayerNames(beatorajaDir);
+            for (String name : names) {
                 playerNameCombo.addItem(name);
             }
         }
