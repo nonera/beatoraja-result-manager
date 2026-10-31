@@ -1,5 +1,6 @@
 package com.beatoraja.screenshot.ui;
 
+import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.ui.theme.Badge;
 import com.beatoraja.screenshot.ui.theme.CardPanel;
@@ -65,6 +66,7 @@ public class PreviewPanel extends JPanel {
     private static final int ORDER_ROW_HEIGHT = 34;
 
     private PostOrderChangeListener postOrderChangeListener;
+    private Map<String, String> clearLampLabels = Map.of();
 
     private final JLabel headerTitleLabel = new JLabel();
     private final JLabel headerDateLabel = new JLabel();
@@ -154,6 +156,11 @@ public class PreviewPanel extends JPanel {
         this.postOrderChangeListener = listener;
     }
 
+    public void setClearLampLabels(Map<String, String> clearLampLabels) {
+        this.clearLampLabels = clearLampLabels == null ? Map.of() : clearLampLabels;
+        repaint();
+    }
+
     /**
      * @param messagesByFile current post text for each entry, keyed by {@link ScreenshotEntry#getFileName()}
      */
@@ -213,7 +220,8 @@ public class PreviewPanel extends JPanel {
             addBadge(entry.getRawTableFolder(), ResultPalette.symbolColor(entry.getRawTableFolder()));
             addBadge(entry.getLevel().isBlank() ? "" : "Lv " + entry.getLevel(), UiTheme.accent());
             addBadge(entry.getRank(), ResultPalette.rankColor(entry.getRank()));
-            addBadge(entry.getClearType(), ResultPalette.lampColor(entry.getClearType()));
+            addBadge(ClearLampLabels.resolve(entry.getClearType(), clearLampLabels),
+                    ResultPalette.lampColor(entry.getClearType()));
             if (headerBadgeRow.getComponentCount() == 0) {
                 headerBadgeRow.add(mutedLabel(entry.getStateLabel()));
             }

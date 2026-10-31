@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
@@ -53,6 +54,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class DatabasePanel extends JPanel {
@@ -98,6 +100,7 @@ public class DatabasePanel extends JPanel {
     private NotationChangeListener notationChangeListener;
     private SelectionListener selectionListener;
     private PostedStateStore postedStateStore;
+    private Map<String, String> clearLampLabels = Map.of();
 
     public DatabasePanel() {
         setLayout(new BorderLayout(0, 0));
@@ -250,7 +253,8 @@ public class DatabasePanel extends JPanel {
         column(COL_SYMBOL).setCellRenderer(new BadgeCellRenderer(ResultPalette::symbolColor, true));
         column(COL_LEVEL).setCellRenderer(new LevelCellRenderer());
         column(COL_RANK).setCellRenderer(new BadgeCellRenderer(ResultPalette::rankColor, true));
-        column(COL_LAMP).setCellRenderer(new BadgeCellRenderer(ResultPalette::lampColor, false));
+        column(COL_LAMP).setCellRenderer(new BadgeCellRenderer(
+                ResultPalette::lampColor, false, text -> ClearLampLabels.resolve(text, clearLampLabels)));
         column(COL_NOTATION).setCellRenderer(new TitleCellRenderer());
         column(COL_STATE).setCellRenderer(new StateCellRenderer());
     }
@@ -302,6 +306,11 @@ public class DatabasePanel extends JPanel {
 
     public void setPostedStateStore(PostedStateStore postedStateStore) {
         this.postedStateStore = postedStateStore;
+        table.repaint();
+    }
+
+    public void setClearLampLabels(Map<String, String> clearLampLabels) {
+        this.clearLampLabels = clearLampLabels == null ? Map.of() : clearLampLabels;
         table.repaint();
     }
 

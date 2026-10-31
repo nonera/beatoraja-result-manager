@@ -69,4 +69,20 @@ public class DiscordAutoPostQueue {
             queuedFileNames.add(entry.getFileName());
         }
     }
+
+    /**
+     * Drops entries that were just posted through another channel (e.g. a manual send) so
+     * they aren't also picked up by a later auto-post batch.
+     */
+    public synchronized void removePosted(List<ScreenshotEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return;
+        }
+        for (ScreenshotEntry entry : entries) {
+            String fileName = entry.getFileName();
+            if (queuedFileNames.remove(fileName)) {
+                queue.removeIf(e -> fileName.equals(e.getFileName()));
+            }
+        }
+    }
 }

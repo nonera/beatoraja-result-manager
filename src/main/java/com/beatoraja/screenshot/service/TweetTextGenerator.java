@@ -1,5 +1,6 @@
 package com.beatoraja.screenshot.service;
 
+import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.config.PostTextFormat;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
@@ -8,6 +9,7 @@ import com.beatoraja.screenshot.player.PlayScore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class TweetTextGenerator {
 
@@ -21,7 +23,7 @@ public final class TweetTextGenerator {
     }
 
     public static String generate(ScreenshotEntry entry, String postNotation) {
-        return generate(entry, postNotation, null, PostTextFormat.defaults());
+        return generate(entry, postNotation, null, PostTextFormat.defaults(), Map.of());
     }
 
     /**
@@ -31,7 +33,7 @@ public final class TweetTextGenerator {
      * length limit without touching the notation/clear type/rank.
      */
     public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength) {
-        return generate(entry, postNotation, null, PostTextFormat.defaults(), maxTitleWeightedLength);
+        return generate(entry, postNotation, null, PostTextFormat.defaults(), maxTitleWeightedLength, Map.of());
     }
 
     /**
@@ -40,15 +42,27 @@ public final class TweetTextGenerator {
      * and the rank falls back to the one in the file name.
      */
     public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format) {
-        return generate(entry, postNotation, score, format, NO_TITLE_LIMIT);
+        return generate(entry, postNotation, score, format, NO_TITLE_LIMIT, Map.of());
+    }
+
+    /** Same as above, with the clear lamp text swapped for the user's custom label, if any is configured for it. */
+    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
+            Map<String, String> clearLampLabels) {
+        return generate(entry, postNotation, score, format, NO_TITLE_LIMIT, clearLampLabels);
     }
 
     public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
             int maxTitleWeightedLength) {
+        return generate(entry, postNotation, score, format, maxTitleWeightedLength, Map.of());
+    }
+
+    /** Same as above, with the clear lamp text swapped for the user's custom label, if any is configured for it. */
+    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
+            int maxTitleWeightedLength, Map<String, String> clearLampLabels) {
         return buildResult(format, new Values(
                 postNotation,
                 truncateToWeightedLength(entry.getTitle(), maxTitleWeightedLength),
-                entry.getClearType(),
+                ClearLampLabels.resolve(entry.getClearType(), clearLampLabels),
                 entry.getRank(),
                 score
         ), entry.getFileName());

@@ -122,6 +122,7 @@ public class MainFrame extends JFrame {
         databasePanel.setNotationChangeListener(this::refreshSelectedTweetText);
         databasePanel.setSelectionListener(this::onSelectionChanged);
         databasePanel.setPostedStateStore(postedStateStore);
+        applyClearLampLabels();
         syncSymbolPriorityOrder();
         reloadDiscordWebhooks();
         reloadDatabaseQuietly();
@@ -362,10 +363,17 @@ public class MainFrame extends JFrame {
         refreshPostPreview();
     }
 
+    /** Pushes the current custom clear lamp labels ("俗称") to the panels that display them. */
+    private void applyClearLampLabels() {
+        databasePanel.setClearLampLabels(config.getClearLampLabels());
+        previewPanel.setClearLampLabels(config.getClearLampLabels());
+    }
+
     /** The auto-generated post text for one entry; final wording is fixed in the pre-post confirmation dialog. */
     private String resolveEntryMessage(ScreenshotEntry entry) {
         PostContext context = resolvePostContext(entry);
-        return TweetTextGenerator.generate(entry, context.notation(), context.score(), config.getPostTextFormat());
+        return TweetTextGenerator.generate(entry, context.notation(), context.score(), config.getPostTextFormat(),
+                config.getClearLampLabels());
     }
 
     private Map<String, String> buildMessagesByFile(List<ScreenshotEntry> entries) {
@@ -600,18 +608,48 @@ public class MainFrame extends JFrame {
 
     private AutoDiscordPostResult postDiscordBatch(List<ScreenshotEntry> entries,
             AppConfig.DiscordWebhookEntry webhook) {
-        String message = mergeMessages(entries);
-        List<Path> imagePaths = entries.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
+        // A screenshot may have been sent manually (and marked posted) after it was already
+        // queued for auto-post, so re-check here to avoid posting it twice.
+        List<ScreenshotEntry> pending = entries.stream()
+                .filter(entry -> !postedStateStore.get(entry.getFileName()).isDiscordPosted())
+                .collect(Collectors.toList());
+
+        // A queued screenshot's file may since have been deleted (e.g. from disk directly,
+        // bypassing the database panel's own queue cleanup). That file is gone for good, so
+        // requeuing it would just fail the same way forever and block every other queued
+        // image behind it - drop it instead of retrying. The rest of the batch wasn't actually
+        // ready yet (it's short of the configured batch size), so put it back in the queue to
+        // wait for new screenshots instead of posting an undersized batch now.
+        List<ScreenshotEntry> missing = pending.stream()
+                .filter(entry -> !Files.exists(entry.getFilePath()))
+                .collect(Collectors.toList());
+        if (!missing.isEmpty()) {
+            for (ScreenshotEntry entry : missing) {
+                LOG.warning("Discord auto-post: dropping queued image no longer on disk: " + entry.getFileName());
+            }
+            pending.removeAll(missing);
+            if (!pending.isEmpty()) {
+                discordAutoPostQueue.requeueFront(pending);
+            }
+            return new AutoDiscordPostResult(0, List.of(), null);
+        }
+
+        if (pending.isEmpty()) {
+            return new AutoDiscordPostResult(0, List.of(), null);
+        }
+
+        String message = mergeMessages(pending);
+        List<Path> imagePaths = pending.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         DiscordWebhookService discordWebhookService = new DiscordWebhookService();
         DiscordWebhookService.PostResult result = discordWebhookService.post(webhook.getUrl(), message, imagePaths);
         if (result.success()) {
-            for (ScreenshotEntry entry : entries) {
+            for (ScreenshotEntry entry : pending) {
                 postedStateStore.markDiscordPosted(entry.getFileName(), result.messageId());
             }
-            return new AutoDiscordPostResult(entries.size(), List.of(), null);
+            return new AutoDiscordPostResult(pending.size(), List.of(), null);
         }
-        return new AutoDiscordPostResult(0, entries, result.message());
+        return new AutoDiscordPostResult(0, pending, result.message());
     }
 
     private record AutoDiscordPostResult(int postedCount, List<ScreenshotEntry> failedEntries, String errorMessage) {
@@ -657,7 +695,7 @@ public class MainFrame extends JFrame {
             }
             PostContext context = resolvePostContext(entry);
             messagesByFile.put(entry.getFileName(), TweetTextGenerator.generate(entry, context.notation(),
-                    context.score(), config.getPostTextFormat(), targetTitleWeighted));
+                    context.score(), config.getPostTextFormat(), targetTitleWeighted, config.getClearLampLabels()));
             abbreviated.add(entry.getFileName());
             over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
         }
@@ -880,8 +918,13 @@ public class MainFrame extends JFrame {
             return;
         }
 
-        setPostingEnabled(false);
         List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 10);
+        List<String> finalBatchTexts = promptFinalDiscordPostTexts(batches, messageSnapshot);
+        if (finalBatchTexts == null) {
+            return;
+        }
+
+        setPostingEnabled(false);
         statusLabel.setText("Discord に送信中... (0/" + batches.size() + ")");
         LOG.info("Discord manual post started: " + selected.size() + " image(s), "
                 + batches.size() + " batch(es) via "
@@ -896,8 +939,7 @@ public class MainFrame extends JFrame {
                 int batchNumber = i + 1;
                 SwingUtilities.invokeLater(() ->
                         statusLabel.setText("Discord に送信中... (" + batchNumber + "/" + batches.size() + ")"));
-                String message = batch.stream().map(e -> messageSnapshot.get(e.getFileName()))
-                        .collect(Collectors.joining("\n"));
+                String message = finalBatchTexts.get(i);
                 List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
                 DiscordWebhookService.PostResult result =
                         discordWebhookService.post(webhook.getUrl(), message, imagePaths);
@@ -919,6 +961,7 @@ public class MainFrame extends JFrame {
                     for (ScreenshotEntry entry : postedSnapshot) {
                         postedStateStore.markDiscordPosted(entry.getFileName(), "");
                     }
+                    discordAutoPostQueue.removePosted(postedSnapshot);
                     savePostedStateQuietly();
                     databasePanel.setPostedStateStore(postedStateStore);
                     statusLabel.setText("Discord 送信完了");
@@ -933,6 +976,7 @@ public class MainFrame extends JFrame {
                         for (ScreenshotEntry entry : postedSnapshot) {
                             postedStateStore.markDiscordPosted(entry.getFileName(), "");
                         }
+                        discordAutoPostQueue.removePosted(postedSnapshot);
                         savePostedStateQuietly();
                         databasePanel.setPostedStateStore(postedStateStore);
                     }
@@ -943,6 +987,50 @@ public class MainFrame extends JFrame {
                 }
             });
         }, "discord-post").start();
+    }
+
+    /**
+     * Shows the exact text that will be sent to Discord - merged per batch, editable right
+     * there - and asks the user to confirm before sending. Unlike the Twitter flow, Discord
+     * messages have no practical character limit to enforce, so this is a single pass with
+     * no re-validation loop.
+     *
+     * @return the (possibly user-edited) text to send for each batch, or {@code null} if the
+     *         user canceled
+     */
+    private List<String> promptFinalDiscordPostTexts(List<List<ScreenshotEntry>> batches,
+            Map<String, String> messagesByFile) {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+
+        List<JTextArea> areas = new ArrayList<>();
+        for (int i = 0; i < batches.size(); i++) {
+            if (batches.size() > 1) {
+                content.add(new JLabel((i + 1) + " 件目の送信"));
+            }
+            JTextArea area = new JTextArea(joinBatchText(batches.get(i), messagesByFile), 6, 40);
+            area.setLineWrap(true);
+            area.setWrapStyleWord(true);
+            areas.add(area);
+
+            content.add(new JScrollPane(area));
+            content.add(Box.createVerticalStrut(8));
+        }
+
+        JScrollPane outer = new JScrollPane(content);
+        outer.setPreferredSize(new Dimension(460, 360));
+
+        int result = JOptionPane.showConfirmDialog(this, outer, "この内容で送信しますか？",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (result != JOptionPane.OK_OPTION) {
+            return null;
+        }
+
+        List<String> texts = new ArrayList<>();
+        for (JTextArea area : areas) {
+            texts.add(area.getText());
+        }
+        return texts;
     }
 
     private void savePostedStateQuietly() {
@@ -968,6 +1056,7 @@ public class MainFrame extends JFrame {
             }
             reloadDiscordWebhooks();
             reloadTableRegistry();
+            applyClearLampLabels();
             refreshScreenshots();
             startWatcher();
         });

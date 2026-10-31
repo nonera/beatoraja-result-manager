@@ -68,6 +68,19 @@ class DiscordAutoPostQueueTest {
         assertTrue(queue.size() >= 0);
     }
 
+    @Test
+    void removePostedDropsMatchingEntry() {
+        ScreenshotEntry a = resultEntry("a.png");
+        ScreenshotEntry b = resultEntry("b.png");
+        queue.offer(a, postedStateStore);
+        queue.offer(b, postedStateStore);
+
+        queue.removePosted(List.of(a));
+
+        assertEquals(1, queue.size());
+        assertEquals("b.png", queue.pollBatch(1).get(0).getFileName());
+    }
+
     private ScreenshotEntry resultEntry(String fileName) {
         return new ScreenshotEntry(
                 tempDir.resolve(fileName),
