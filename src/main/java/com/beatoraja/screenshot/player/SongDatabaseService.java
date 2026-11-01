@@ -15,7 +15,27 @@ public class SongDatabaseService implements AutoCloseable {
     private final boolean available;
     private final Map<String, SongRecord> bySha256 = new HashMap<>();
 
+    private static final String BEATORAJA_QUERY = """
+            SELECT md5, sha256, title, subtitle, level
+            FROM song
+            """;
+    /** BMZ Player's library.db; play_level is TEXT there (usually digits). */
+    private static final String BMZ_QUERY = """
+            SELECT md5, sha256, title, subtitle, play_level AS level
+            FROM charts
+            """;
+
+    /** beatoraja's songdata.db. */
     public SongDatabaseService(Path songDatabase) throws SQLException {
+        this(songDatabase, BEATORAJA_QUERY);
+    }
+
+    /** BMZ Player's library.db. */
+    public static SongDatabaseService forBmzLibrary(Path libraryDb) throws SQLException {
+        return new SongDatabaseService(libraryDb, BMZ_QUERY);
+    }
+
+    private SongDatabaseService(Path songDatabase, String query) throws SQLException {
         if (songDatabase == null || !Files.exists(songDatabase)) {
             available = false;
             return;
@@ -23,10 +43,7 @@ public class SongDatabaseService implements AutoCloseable {
 
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + songDatabase.toAbsolutePath());
              Statement statement = connection.createStatement();
-             ResultSet rs = statement.executeQuery("""
-                     SELECT md5, sha256, title, subtitle, level
-                     FROM song
-                     """)) {
+             ResultSet rs = statement.executeQuery(query)) {
             while (rs.next()) {
                 String sha256 = rs.getString("sha256");
                 if (sha256 == null || sha256.isBlank() || bySha256.containsKey(sha256)) {

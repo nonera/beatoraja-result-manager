@@ -137,6 +137,16 @@ beatoraja の `table/` 配下にある `.bmt` を読み込み、曲名から所�
 - データベースタブで `★3/sl3` のような **投稿表記** を選択・編集可能
 - 設定の **beatoraja フォルダ** で `.bmt` の読み込み元を指定
 
+## BMZ Player 連携
+
+[BMZ Player](https://github.com/hyrorre/bmz-player) にも対応しています。設定の **beatoraja / BMZ フォルダ** に `config.toml` のある data フォルダ（ポータブル版は exe フォルダでも可）を指定すると自動判別します。
+
+- スクショ: リザルト画面で **F12**。`config.toml` の `[screenshot] dir`（既定 `<data>/screenshots/`）に `bmz-screenshot-<UNIX ミリ秒>.png` で保存されます
+- ファイル名に曲情報が無いため、撮影時刻の直前 10 分以内に終了したプレイを `profiles/<ID>/score.db` の `score_history` から探し、曲名・ランプ・ランク・判定数を補完します
+- 曲情報は `library.db` の `charts`、難易度表は `library.db` の `difficulty_tables` / `difficulty_table_entries` から読み込みます
+- プレイヤー名欄にはプロファイル ID を指定（空欄なら `config.toml` の `active_profile`）
+- 制約: 画面種別が判別できないため、プレイ後 10 分以内の選曲画面などのスクショも直前プレイのリザルトとして扱われます。コース（段位）リザルトは未対応です
+
 ## 注意事項
 
 - Twitter 投稿は非公式の clix 経由です。X 側の仕様変更で動かなくなる可能性があります

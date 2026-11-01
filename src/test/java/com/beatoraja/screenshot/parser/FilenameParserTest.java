@@ -5,9 +5,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FilenameParserTest {
@@ -51,5 +55,22 @@ class FilenameParserTest {
         assertEquals("Result", entry.getStateLabel());
         assertEquals("sl12", entry.getRawTableFolder());
         assertTrue(entry.isResultScreenshot());
+    }
+
+    @Test
+    void parseBmzScreenshot() {
+        Path file = tempDir.resolve("bmz-screenshot-1761555600123.png");
+        ScreenshotEntry entry = FilenameParser.parse(file);
+
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1761555600123L), ZoneId.systemDefault()),
+                entry.getCapturedAt());
+        assertEquals("", entry.getStateLabel());
+        assertFalse(entry.isResultScreenshot());
+    }
+
+    @Test
+    void parseBmzScreenshotWithCollisionSuffix() {
+        assertNotNull(FilenameParser.parse(tempDir.resolve("bmz-screenshot-1761555600123-2.png")).getCapturedAt());
+        assertNotNull(FilenameParser.parse(tempDir.resolve("bmz-screenshot-1761555600123-overflow.png")).getCapturedAt());
     }
 }

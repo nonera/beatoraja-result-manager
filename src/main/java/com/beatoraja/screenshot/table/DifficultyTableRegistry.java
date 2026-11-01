@@ -77,8 +77,17 @@ public class DifficultyTableRegistry {
         loadFromResolvedTablePath(tablePath);
     }
 
+    /** Loads tables already read from elsewhere (e.g. BMZ Player's library.db) instead of a .bmt folder. */
+    public void loadFromTables(List<BmtTableReader.BmtTableData> tables) {
+        clear();
+        loadResult(new BmtTableReader.ReadResult(tables, List.of()));
+    }
+
     private void loadFromResolvedTablePath(Path tablePath) throws IOException {
-        BmtTableReader.ReadResult result = BmtTableReader.readAllWithDiagnostics(tablePath);
+        loadResult(BmtTableReader.readAllWithDiagnostics(tablePath));
+    }
+
+    private void loadResult(BmtTableReader.ReadResult result) {
         for (BmtTableReader.BmtTableData table : result.tables()) {
             registerTable(table);
         }

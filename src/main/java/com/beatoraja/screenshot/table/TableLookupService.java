@@ -63,6 +63,12 @@ public class TableLookupService {
         if (dir.getFileName() != null && "screenshot".equalsIgnoreCase(dir.getFileName().toString())) {
             return dir.getParent();
         }
+        // BMZ Player's default screenshot folder is <data dir>/screenshots.
+        if (dir.getFileName() != null && "screenshots".equalsIgnoreCase(dir.getFileName().toString())
+                && dir.getParent() != null
+                && com.beatoraja.screenshot.player.BmzPaths.findDataDirectory(dir.getParent()) != null) {
+            return dir.getParent();
+        }
         return dir;
     }
 }
