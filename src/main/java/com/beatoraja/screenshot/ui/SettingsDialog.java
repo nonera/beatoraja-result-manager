@@ -304,18 +304,26 @@ public class SettingsDialog extends JDialog {
 
     private JPanel buildClearLampLabelSection() {
         JTable table = new JTable(clearLampLabelTableModel);
-        table.getColumnModel().getColumn(0).setPreferredWidth(200);
-        table.getColumnModel().getColumn(1).setPreferredWidth(280);
+        table.getColumnModel().getColumn(0).setPreferredWidth(180);
+        table.getColumnModel().getColumn(1).setPreferredWidth(200);
+        table.getColumnModel().getColumn(2).setPreferredWidth(120);
+        table.getColumnModel().getColumn(3).setPreferredWidth(90);
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBorder(javax.swing.BorderFactory.createTitledBorder("クリアランプ表示名（俗称）"));
         scroll.setPreferredSize(new java.awt.Dimension(520, 260));
         scroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JLabel hint = new JLabel("投稿文や一覧に表示するクリア名を俗称などに変更できます（空欄でデフォルト表示に戻ります）");
+        JLabel hint = new JLabel("<html>投稿文や一覧に表示するクリア名を俗称などに変更できます（空欄でデフォルト表示に戻ります）<br>"
+                + "略称は 8 枚以上を 1 ツイートにまとめるときの「HC : st3 st2」形式で使います。"
+                + "チェックを外したランプの曲はまとめ投稿文に載せません</html>");
         hint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
         JButton resetAll = new JButton("すべてデフォルトに戻す");
-        resetAll.addActionListener(e -> clearLampLabelTableModel.setOverrides(Map.of()));
+        resetAll.addActionListener(e -> {
+            clearLampLabelTableModel.setOverrides(Map.of());
+            clearLampLabelTableModel.setShortOverrides(Map.of());
+            clearLampLabelTableModel.setGroupedVisibility(Map.of());
+        });
         JPanel actions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
         actions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         actions.add(resetAll);
@@ -438,6 +446,8 @@ public class SettingsDialog extends JDialog {
         updatePlayerKindLabels();
         webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
         clearLampLabelTableModel.setOverrides(config.getClearLampLabels());
+        clearLampLabelTableModel.setShortOverrides(config.getClearLampShortLabels());
+        clearLampLabelTableModel.setGroupedVisibility(config.getClearLampGroupedVisibility());
         discordAutoPostEnabledBox.setSelected(config.isDiscordAutoPostEnabled());
         discordAutoPostBatchSpinner.setValue(config.getDiscordAutoPostBatchSize());
         reloadDiscordAutoPostWebhookChoices(config.getDiscordAutoPostWebhookName());
@@ -573,6 +583,8 @@ public class SettingsDialog extends JDialog {
         config.setPlayerName(playerName);
         config.setDiscordWebhooks(webhookTableModel.getRows());
         config.setClearLampLabels(clearLampLabelTableModel.getOverrides());
+        config.setClearLampShortLabels(clearLampLabelTableModel.getShortOverrides());
+        config.setClearLampGroupedVisibility(clearLampLabelTableModel.getGroupedVisibility());
         String currentWebhookName = discordAutoPostWebhookCombo.getSelectedItem() == null
                 ? ""
                 : String.valueOf(discordAutoPostWebhookCombo.getSelectedItem()).trim();
@@ -604,19 +616,57 @@ public class SettingsDialog extends JDialog {
      * "use the default beatoraja name" and is dropped rather than stored.
      */
     private static class ClearLampLabelTableModel extends AbstractTableModel {
-        private final String[] columns = {"クリアランプ", "表示名（空欄でデフォルト）"};
+        private final String[] columns = {"クリアランプ", "表示名（空欄でデフォルト）", "略称（まとめ投稿用）", "まとめに載せる"};
+        /** Visibility overrides; a value equal to the default is not stored. */
+        private Map<String, Boolean> groupedVisibility = new LinkedHashMap<>();
         private final List<String> canonicalTypes = ClearLampLabels.CANONICAL_ORDER;
         private Map<String, String> overrides = new LinkedHashMap<>();
+        /** Short-name overrides; a value equal to the default is not stored. */
+        private Map<String, String> shortOverrides = new LinkedHashMap<>();
 
         public void setOverrides(Map<String, String> overrides) {
             this.overrides = new LinkedHashMap<>(overrides == null ? Map.of() : overrides);
             fireTableDataChanged();
         }
 
+        public void setShortOverrides(Map<String, String> shortOverrides) {
+            this.shortOverrides = new LinkedHashMap<>(shortOverrides == null ? Map.of() : shortOverrides);
+            fireTableDataChanged();
+        }
+
+        public void setGroupedVisibility(Map<String, Boolean> groupedVisibility) {
+            this.groupedVisibility = new LinkedHashMap<>(groupedVisibility == null ? Map.of() : groupedVisibility);
+            fireTableDataChanged();
+        }
+
+        public Map<String, Boolean> getGroupedVisibility() {
+            Map<String, Boolean> result = new LinkedHashMap<>();
+            for (String type : canonicalTypes) {
+                Boolean value = groupedVisibility.get(type);
+                if (value != null) {
+                    result.put(type, value);
+                }
+            }
+            return result;
+        }
+
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            return columnIndex == 3 ? Boolean.class : String.class;
+        }
+
         public Map<String, String> getOverrides() {
+            return nonBlank(overrides);
+        }
+
+        public Map<String, String> getShortOverrides() {
+            return nonBlank(shortOverrides);
+        }
+
+        private Map<String, String> nonBlank(Map<String, String> values) {
             Map<String, String> result = new LinkedHashMap<>();
             for (String type : canonicalTypes) {
-                String value = overrides.get(type);
+                String value = values.get(type);
                 if (value != null && !value.isBlank()) {
                     result.put(type, value.trim());
                 }
@@ -641,7 +691,7 @@ public class SettingsDialog extends JDialog {
 
         @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex == 1;
+            return columnIndex >= 1;
         }
 
         @Override
@@ -650,18 +700,41 @@ public class SettingsDialog extends JDialog {
             if (columnIndex == 0) {
                 return type;
             }
+            if (columnIndex == 2) {
+                return ClearLampLabels.resolveShort(type, shortOverrides);
+            }
+            if (columnIndex == 3) {
+                return ClearLampLabels.isShownInGroupedPost(type, groupedVisibility);
+            }
             String value = overrides.get(type);
             return value == null ? "" : value;
         }
 
         @Override
         public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-            if (columnIndex != 1) {
+            if (columnIndex < 1) {
                 return;
             }
             String type = canonicalTypes.get(rowIndex);
+            if (columnIndex == 3) {
+                boolean shown = Boolean.TRUE.equals(aValue);
+                if (shown == !ClearLampLabels.DEFAULT_GROUPED_HIDDEN.contains(type)) {
+                    groupedVisibility.remove(type);
+                } else {
+                    groupedVisibility.put(type, shown);
+                }
+                fireTableCellUpdated(rowIndex, columnIndex);
+                return;
+            }
             String text = aValue == null ? "" : String.valueOf(aValue).trim();
-            if (text.isBlank()) {
+            if (columnIndex == 2) {
+                // Blank or the default itself: keep following the default.
+                if (text.isBlank() || text.equals(ClearLampLabels.DEFAULT_SHORT_LABELS.get(type))) {
+                    shortOverrides.remove(type);
+                } else {
+                    shortOverrides.put(type, text);
+                }
+            } else if (text.isBlank()) {
                 overrides.remove(type);
             } else {
                 overrides.put(type, text);

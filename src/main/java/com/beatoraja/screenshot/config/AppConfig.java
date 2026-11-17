@@ -54,6 +54,10 @@ public class AppConfig {
     private String twitterCt0 = "";
     private Map<String, String> twitterCookies = new LinkedHashMap<>();
     private Map<String, String> clearLampLabels = new LinkedHashMap<>();
+    /** Overrides of {@link ClearLampLabels#DEFAULT_SHORT_LABELS}, keyed like {@link #clearLampLabels}. */
+    private Map<String, String> clearLampShortLabels = new LinkedHashMap<>();
+    /** Overrides of {@link ClearLampLabels#DEFAULT_GROUPED_HIDDEN}: lamp → listed in the grouped post text. */
+    private Map<String, Boolean> clearLampGroupedVisibility = new LinkedHashMap<>();
 
     public static AppConfig load() {
         Path configFile = AppPaths.configFile();
@@ -338,6 +342,26 @@ public class AppConfig {
     }
 
     /** The custom label for {@code clearType} if one is configured, else {@code clearType} unchanged. */
+    public Map<String, String> getClearLampShortLabels() {
+        return clearLampShortLabels;
+    }
+
+    public void setClearLampShortLabels(Map<String, String> clearLampShortLabels) {
+        this.clearLampShortLabels = clearLampShortLabels == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(clearLampShortLabels);
+    }
+
+    public Map<String, Boolean> getClearLampGroupedVisibility() {
+        return clearLampGroupedVisibility;
+    }
+
+    public void setClearLampGroupedVisibility(Map<String, Boolean> clearLampGroupedVisibility) {
+        this.clearLampGroupedVisibility = clearLampGroupedVisibility == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(clearLampGroupedVisibility);
+    }
+
     public String resolveClearLampLabel(String clearType) {
         return ClearLampLabels.resolve(clearType, clearLampLabels);
     }

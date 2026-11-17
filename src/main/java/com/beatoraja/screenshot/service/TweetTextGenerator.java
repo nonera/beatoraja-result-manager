@@ -68,6 +68,11 @@ public final class TweetTextGenerator {
         ), entry.getFileName());
     }
 
+    /** {@code text} cut to {@code maxWeighted} Twitter-weighted units, ending in an ellipsis when cut. */
+    static String truncate(String text, int maxWeighted) {
+        return truncateToWeightedLength(text, maxWeighted);
+    }
+
     private static String truncateToWeightedLength(String text, int maxWeighted) {
         if (text == null || TweetTextLimits.weightedLength(text) <= maxWeighted) {
             return text;

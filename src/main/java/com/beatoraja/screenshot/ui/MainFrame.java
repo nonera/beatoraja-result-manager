@@ -9,6 +9,7 @@ import com.beatoraja.screenshot.player.PlayScore;
 import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
+import com.beatoraja.screenshot.service.LampGroupedTweetText;
 import com.beatoraja.screenshot.service.PostBatchSplitter;
 import com.beatoraja.screenshot.service.PostedStateStore;
 import com.beatoraja.screenshot.service.ScreenshotFolderCleanupService;
@@ -424,9 +425,14 @@ public class MainFrame extends JFrame {
     private void updateActionButtons(int selectedCount) {
         selectionCountLabel.setText(selectedCount == 0 ? "" : selectedCount + " 枚選択中");
         twitterButton.setEnabled(selectedCount >= 1);
-        twitterButton.setToolTipText(selectedCount > 4
-                ? "5枚以上は4枚ずつ別ツイートとして順番に投稿します"
-                : null);
+        int maxImages = ClixService.MAX_IMAGES_PER_POST;
+        String tooltip = null;
+        if (selectedCount > maxImages) {
+            tooltip = (maxImages + 1) + "枚以上は" + maxImages + "枚ずつ別ツイートとして順番に投稿します";
+        } else if (LampGroupedTweetText.shouldUse(selectedCount)) {
+            tooltip = "枚数が多いため、投稿文はランプ別のまとめ形式になります";
+        }
+        twitterButton.setToolTipText(tooltip);
         discordButton.setEnabled(selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
         discordButton.setToolTipText(selectedCount > 10
                 ? "11枚以上は10枚ずつ分割送信します"
@@ -660,6 +666,17 @@ public class MainFrame extends JFrame {
         return batch.stream().map(e -> messagesByFile.get(e.getFileName())).collect(Collectors.joining("\n"));
     }
 
+    /** The lamp-grouped caption for a batch with too many images for a line each. */
+    private String buildLampGroupedText(List<ScreenshotEntry> batch) {
+        List<LampGroupedTweetText.Item> items = new ArrayList<>();
+        for (ScreenshotEntry entry : batch) {
+            items.add(new LampGroupedTweetText.Item(entry.getClearType(), resolvePostContext(entry).notation(),
+                    entry.getTitle()));
+        }
+        return LampGroupedTweetText.generate(items, config.getClearLampShortLabels(),
+                config.getClearLampGroupedVisibility());
+    }
+
     /**
      * Titles are never auto-shortened past this many weighted units. Kept generous
      * (~15 Japanese characters) since the notation/comment portion of a caption is
@@ -713,12 +730,8 @@ public class MainFrame extends JFrame {
      * @return the (possibly user-edited) text to post for each batch, or {@code null} if
      *         the user canceled
      */
-    private List<String> promptFinalPostTexts(List<List<ScreenshotEntry>> batches, Map<String, String> messagesByFile,
-            int abbreviatedCount) {
-        List<String> texts = new ArrayList<>();
-        for (List<ScreenshotEntry> batch : batches) {
-            texts.add(joinBatchText(batch, messagesByFile));
-        }
+    private List<String> promptFinalPostTexts(List<String> initialTexts, int abbreviatedCount) {
+        List<String> texts = new ArrayList<>(initialTexts);
 
         while (true) {
             JPanel content = new JPanel();
@@ -729,8 +742,8 @@ public class MainFrame extends JFrame {
             }
 
             List<JTextArea> areas = new ArrayList<>();
-            for (int i = 0; i < batches.size(); i++) {
-                if (batches.size() > 1) {
+            for (int i = 0; i < texts.size(); i++) {
+                if (texts.size() > 1) {
                     content.add(new JLabel((i + 1) + " 件目のツイート"));
                 }
                 JTextArea area = new JTextArea(texts.get(i), 6, 40);
@@ -810,10 +823,16 @@ public class MainFrame extends JFrame {
         }
         Map<String, String> messageSnapshot = buildMessagesByFile(selected);
 
-        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 4);
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, ClixService.MAX_IMAGES_PER_POST);
         List<String> abbreviatedFileNames = new ArrayList<>();
+        List<String> initialBatchTexts = new ArrayList<>();
         for (List<ScreenshotEntry> batch : batches) {
-            abbreviatedFileNames.addAll(abbreviateBatchIfOverLimit(batch, messageSnapshot));
+            if (LampGroupedTweetText.shouldUse(batch.size())) {
+                initialBatchTexts.add(buildLampGroupedText(batch));
+            } else {
+                abbreviatedFileNames.addAll(abbreviateBatchIfOverLimit(batch, messageSnapshot));
+                initialBatchTexts.add(joinBatchText(batch, messageSnapshot));
+            }
         }
 
         TwitterAuthService authService = new TwitterAuthService(config);
@@ -826,7 +845,7 @@ public class MainFrame extends JFrame {
             }
         }
 
-        List<String> finalBatchTexts = promptFinalPostTexts(batches, messageSnapshot, abbreviatedFileNames.size());
+        List<String> finalBatchTexts = promptFinalPostTexts(initialBatchTexts, abbreviatedFileNames.size());
         if (finalBatchTexts == null) {
             return;
         }
