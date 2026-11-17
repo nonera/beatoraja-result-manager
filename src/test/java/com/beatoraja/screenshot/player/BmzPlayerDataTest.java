@@ -107,6 +107,10 @@ class BmzPlayerDataTest {
         assertEquals(175, play.score().exScore());
         assertEquals(3, play.score().bp());
 
+        // File names carry the lamp: it must agree with the play found.
+        assertEquals(1, service.findNear(at(1320), 6).size());
+        assertTrue(service.findNear(at(1320), 10).isEmpty());
+
         assertTrue(service.findNear(at(1300 + 601), null).isEmpty());
         assertTrue(service.findNear(at(900), null).isEmpty());
     }

@@ -57,6 +57,9 @@ public class SettingsDialog extends JDialog {
     private final AppConfig config;
     private final SaveListener listener;
     private final JTextField screenshotDirField = new JTextField(32);
+    private final JComboBox<PlayerKind> playerKindCombo = new JComboBox<>(new PlayerKind[]{PlayerKind.BEATORAJA, PlayerKind.BMZ});
+    private final JLabel playerDirLabel = new JLabel();
+    private final JLabel playerHintLabel = new JLabel();
     private final JTextField beatorajaDirField = new JTextField(32);
     private final JComboBox<String> playerNameCombo = new JComboBox<>();
     private final JLabel twitterStatusLabel = new JLabel("未確認");
@@ -155,6 +158,16 @@ public class SettingsDialog extends JDialog {
 
         gbc.gridx = 0;
         gbc.gridy = 0;
+        form.add(new JLabel("使用プレイヤー"), gbc);
+        gbc.gridx = 1;
+        playerKindCombo.addActionListener(e -> {
+            updatePlayerKindLabels();
+            refreshPlayerNames();
+        });
+        form.add(playerKindCombo, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy++;
         form.add(new JLabel("スクショフォルダ"), gbc);
         gbc.gridx = 1;
         JPanel screenshotPanel = new JPanel(new BorderLayout(6, 0));
@@ -174,7 +187,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridwidth = 1;
         gbc.gridx = 0;
         gbc.gridy++;
-        form.add(new JLabel("beatoraja / BMZ フォルダ"), gbc);
+        form.add(playerDirLabel, gbc);
         gbc.gridx = 1;
         JPanel beatorajaPanel = new JPanel(new BorderLayout(6, 0));
         beatorajaPanel.add(beatorajaDirField, BorderLayout.CENTER);
@@ -198,9 +211,24 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.gridwidth = 2;
-        form.add(new JLabel("<html>空欄の場合は beatoraja: config_sys.json の playername（scoredatalog.db 照合用）<br>"
-                + "BMZ Player: config.toml の active_profile（profiles/&lt;ID&gt;/score.db 照合用）を使用</html>"), gbc);
+        form.add(playerHintLabel, gbc);
         return form;
+    }
+
+    private PlayerKind selectedPlayerKind() {
+        return playerKindCombo.getSelectedItem() instanceof PlayerKind kind ? kind : PlayerKind.BEATORAJA;
+    }
+
+    private void updatePlayerKindLabels() {
+        if (selectedPlayerKind() == PlayerKind.BMZ) {
+            playerDirLabel.setText("BMZ Player data フォルダ");
+            playerHintLabel.setText("<html>config.toml のある data フォルダ（ポータブル版は exe フォルダでも可）<br>"
+                    + "プレイヤー名はプロファイル ID。空欄なら config.toml の active_profile（profiles/&lt;ID&gt;/score.db 照合用）</html>");
+        } else {
+            playerDirLabel.setText("beatoraja フォルダ");
+            playerHintLabel.setText("<html>config_sys.json のあるフォルダ<br>"
+                    + "プレイヤー名が空欄なら config_sys.json の playername（scoredatalog.db 照合用）</html>");
+        }
     }
 
     private JPanel buildTwitterSection() {
@@ -406,6 +434,8 @@ public class SettingsDialog extends JDialog {
     private void loadValues() {
         screenshotDirField.setText(config.getScreenshotDirectory());
         beatorajaDirField.setText(config.getBeatorajaDirectory());
+        playerKindCombo.setSelectedItem(config.playerKind());
+        updatePlayerKindLabels();
         webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
         clearLampLabelTableModel.setOverrides(config.getClearLampLabels());
         discordAutoPostEnabledBox.setSelected(config.isDiscordAutoPostEnabled());
@@ -449,7 +479,7 @@ public class SettingsDialog extends JDialog {
         String beatorajaDirText = beatorajaDirField.getText().trim();
         if (!beatorajaDirText.isBlank()) {
             Path beatorajaDir = Path.of(beatorajaDirText);
-            List<String> names = PlayerKind.detect(beatorajaDir) == PlayerKind.BMZ
+            List<String> names = selectedPlayerKind() == PlayerKind.BMZ
                     ? BmzPaths.listProfileIds(beatorajaDir)
                     : BeatorajaPaths.listPlayerNames(beatorajaDir);
             for (String name : names) {
@@ -537,6 +567,7 @@ public class SettingsDialog extends JDialog {
         }
 
         config.setScreenshotDirectory(screenshotDir.getAbsolutePath());
+        config.setPlayerKind(selectedPlayerKind());
         config.setBeatorajaDirectory(beatorajaDirField.getText().trim());
         String playerName = String.valueOf(playerNameCombo.getEditor().getItem()).trim();
         config.setPlayerName(playerName);

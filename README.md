@@ -139,13 +139,14 @@ beatoraja の `table/` 配下にある `.bmt` を読み込み、曲名から所�
 
 ## BMZ Player 連携
 
-[BMZ Player](https://github.com/hyrorre/bmz-player) にも対応しています。設定の **beatoraja / BMZ フォルダ** に `config.toml` のある data フォルダ（ポータブル版は exe フォルダでも可）を指定すると自動判別します。
+[BMZ Player](https://github.com/hyrorre/bmz-player) にも対応しています。設定の **使用プレイヤー** を「BMZ Player」に切り替え、**BMZ Player data フォルダ** に `config.toml` のある data フォルダ（ポータブル版は exe フォルダでも可）を指定してください（初回設定ではフォルダの中身から自動で選ばれます）。
 
-- スクショ: リザルト画面で **F12**。`config.toml` の `[screenshot] dir`（既定 `<data>/screenshots/`）に `bmz-screenshot-<UNIX ミリ秒>.png` で保存されます
-- ファイル名に曲情報が無いため、撮影時刻の直前 10 分以内に終了したプレイを `profiles/<ID>/score.db` の `score_history` から探し、曲名・ランプ・ランク・判定数を補完します
+- スクショ: リザルト画面で **F12**。`config.toml` の `[screenshot] dir`（既定 `<data>/screenshots/`）に保存されます
+- BMZ Player **v0.5.2 以降**が必要です。ファイル名 `<年月日_時分秒_ミリ秒>_<曲名>[_<サブタイトル>]_<ランプ>.png`（例: `20261105_203045_123_Song_[ANOTHER]_Hard.png`。選曲・決定・プレイ画面は `Music_Select` / `Decide_` / `Play_` 付き）から画面種別とランプを読み取ります。v0.5.1 以前の `bmz-screenshot-<UNIX ミリ秒>.png` には対応していません
+- ファイル名だけでは譜面を特定できないため、撮影時刻の直前 10 分以内に終了したプレイを `profiles/<ID>/score.db` の `score_history` から探し、ファイル名のランプと一致すれば曲名・ランプ・ランク・判定数を補完します
 - 曲情報は `library.db` の `charts`、難易度表は `library.db` の `difficulty_tables` / `difficulty_table_entries` から読み込みます
 - プレイヤー名欄にはプロファイル ID を指定（空欄なら `config.toml` の `active_profile`）
-- 制約: 画面種別が判別できないため、プレイ後 10 分以内の選曲画面などのスクショも直前プレイのリザルトとして扱われます。コース（段位）リザルトは未対応です
+- 制約: コース（段位）リザルトは未対応です（コースのランプが最終ステージのランプと同じ場合は最終ステージの譜面として扱われます）
 
 ## 注意事項
 

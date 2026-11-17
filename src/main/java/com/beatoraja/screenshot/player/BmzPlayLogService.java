@@ -18,9 +18,10 @@ import java.util.Set;
 
 /**
  * Play history from BMZ Player's {@code profiles/<id>/score.db} ({@code score_history} table).
- * BMZ screenshots carry no song or lamp in their file name, so a screenshot is matched to the
- * latest play recorded shortly before it: {@code played_at} is stamped when the play finishes,
- * just before the result screen appears.
+ * BMZ screenshot names do not identify the chart (they carry only a sanitized title and the
+ * lamp), so a screenshot is matched to the latest play recorded
+ * shortly before it: {@code played_at} is stamped when the play finishes, just before the
+ * result screen appears.
  */
 public class BmzPlayLogService implements PlayLogSource {
 
@@ -94,7 +95,12 @@ public class BmzPlayLogService implements PlayLogSource {
         return available;
     }
 
-    /** At most one entry: the latest play finished within the window before {@code capturedAt}. */
+    /**
+     * At most one entry: the latest play finished within the window before {@code capturedAt}.
+     * When the file name gave a lamp ({@code expectedClearId}) and that play's differs,
+     * the screenshot is of something not in the history (autoplay, a course result, a play still
+     * being saved) and nothing is returned.
+     */
     @Override
     public List<PlayerPlayLogService.PlayLogEntry> findNear(LocalDateTime capturedAt, Integer expectedClearId) {
         if (!available || capturedAt == null) {
@@ -108,7 +114,10 @@ public class BmzPlayLogService implements PlayLogSource {
             return List.of();
         }
         PlayerPlayLogService.PlayLogEntry entry = entriesByDate.get(last);
-        return entry.dateEpoch() >= from ? List.of(entry) : List.of();
+        if (entry.dateEpoch() < from || (expectedClearId != null && entry.clearId() != expectedClearId)) {
+            return List.of();
+        }
+        return List.of(entry);
     }
 
     /** Index of the first entry played after {@code toInclusive}. */

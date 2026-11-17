@@ -437,7 +437,7 @@ public class MainFrame extends JFrame {
         Path screenshotDir = Path.of(config.getScreenshotDirectory());
         try {
             reloadTableRegistry();
-            List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir);
+            List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir, config.playerKind());
             statusLabel.setText(entries.size() + " 件のスクショを読み込みました");
             startIndexing(entries);
         } catch (IOException e) {
@@ -505,11 +505,11 @@ public class MainFrame extends JFrame {
     }
 
     /**
-     * Resolves and stores a newly detected screenshot, returning the entry as resolved. For
-     * BMZ Player screenshots that is where the song, lamp and rank come from, since their
-     * file names carry only the time.
+     * Resolves and stores a newly detected screenshot, returning it as resolved. For BMZ
+     * Player screenshots that is where the song, lamp and rank come from, since their file
+     * names do not identify the chart.
      */
-    private ScreenshotEntry syncDatabaseEntry(ScreenshotEntry entry) {
+    private TableLookupService.EnrichedScreenshot syncDatabaseEntry(ScreenshotEntry entry) {
         // The new screenshot's play result may have just been written to
         // scoredatalog.db, after chartResolverService last loaded it, so
         // reload the player databases before resolving the sha256/md5.
@@ -523,7 +523,7 @@ public class MainFrame extends JFrame {
                 statusLabel.setText("DB 更新失敗: " + e.getMessage());
             }
         }
-        return enriched.entry();
+        return enriched;
     }
 
     private void startWatcher() {
@@ -533,7 +533,7 @@ public class MainFrame extends JFrame {
         Path screenshotDir = Path.of(config.getScreenshotDirectory());
         screenshotWatcher = new ScreenshotWatcher();
         try {
-            screenshotWatcher.start(screenshotDir, entry -> SwingUtilities.invokeLater(() -> onScreenshotDetected(entry)));
+            screenshotWatcher.start(screenshotDir, config.playerKind(), entry -> SwingUtilities.invokeLater(() -> onScreenshotDetected(entry)));
         } catch (IOException e) {
             statusLabel.setText("フォルダ監視を開始できませんでした");
         }
@@ -541,15 +541,16 @@ public class MainFrame extends JFrame {
 
     private void onScreenshotDetected(ScreenshotEntry entry) {
         LOG.info("Screenshot detected: " + entry.getFileName() + " (" + entry.getStateLabel() + ")");
-        ScreenshotEntry resolved = syncDatabaseEntry(entry);
-        if (chartResolverService.getPlayerKind() == PlayerKind.BMZ && !resolved.isResultScreenshot()) {
+        TableLookupService.EnrichedScreenshot resolved = syncDatabaseEntry(entry);
+        if (chartResolverService.getPlayerKind() == PlayerKind.BMZ && entry.isResultScreenshot()
+                && !resolved.resolvedFromPlayerData()) {
             // BMZ Player may still be saving the play to score.db; try once more shortly.
-            Timer retry = new Timer(BMZ_RESOLVE_RETRY_MILLIS, e -> offerToAutoPost(syncDatabaseEntry(entry)));
+            Timer retry = new Timer(BMZ_RESOLVE_RETRY_MILLIS, e -> offerToAutoPost(syncDatabaseEntry(entry).entry()));
             retry.setRepeats(false);
             retry.start();
             return;
         }
-        offerToAutoPost(resolved);
+        offerToAutoPost(resolved.entry());
     }
 
     private void offerToAutoPost(ScreenshotEntry entry) {

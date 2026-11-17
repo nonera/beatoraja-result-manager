@@ -40,7 +40,7 @@ public class ChartResolverService implements AutoCloseable {
         closeConnections();
 
         beatorajaDirectory = config.resolveBeatorajaDirectory();
-        playerKind = PlayerKind.detect(beatorajaDirectory);
+        playerKind = config.playerKind();
         if (beatorajaDirectory == null || !beatorajaDirectory.toFile().isDirectory()) {
             registry.clear();
             return;
@@ -223,12 +223,12 @@ public class ChartResolverService implements AutoCloseable {
     }
 
     /**
-     * BMZ Player screenshot names carry only the time, so once the play is found its song,
-     * lamp and rank stand in for what beatoraja would have written into the file name.
-     * beatoraja entries are returned unchanged.
+     * BMZ Player screenshot names carry only a sanitized title and the lamp, so once the play is
+     * found its song, lamp and rank stand in for what beatoraja would have written into the file
+     * name. beatoraja entries are returned unchanged.
      */
     private ScreenshotEntry withPlayResult(ScreenshotEntry entry, ResolvedChart resolved) {
-        if (playerKind != PlayerKind.BMZ || !entry.getStateLabel().isBlank()) {
+        if (playerKind != PlayerKind.BMZ) {
             return entry;
         }
         return new ScreenshotEntry(

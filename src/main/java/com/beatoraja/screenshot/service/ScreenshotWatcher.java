@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.parser.FilenameParser;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
@@ -37,17 +38,18 @@ public class ScreenshotWatcher implements AutoCloseable {
     private Path watchedDirectory;
     private volatile boolean running;
 
-    public void start(Path directory, Listener listener) throws IOException {
+    /** Watches {@code directory} for new PNGs, parsing their names as {@code player} writes them. */
+    public void start(Path directory, PlayerKind player, Listener listener) throws IOException {
         stop();
         watchedDirectory = directory;
         watchService = FileSystems.getDefault().newWatchService();
         directory.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
         running = true;
 
-        executor.submit(() -> watchLoop(listener));
+        executor.submit(() -> watchLoop(player, listener));
     }
 
-    private void watchLoop(Listener listener) {
+    private void watchLoop(PlayerKind player, Listener listener) {
         while (running) {
             WatchKey key;
             try {
@@ -70,7 +72,7 @@ public class ScreenshotWatcher implements AutoCloseable {
                     continue;
                 }
                 waitForFile(created);
-                listener.onScreenshotAdded(FilenameParser.parse(created));
+                listener.onScreenshotAdded(FilenameParser.parse(created, player));
             }
             key.reset();
         }

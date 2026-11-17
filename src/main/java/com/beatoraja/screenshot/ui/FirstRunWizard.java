@@ -142,7 +142,11 @@ public class FirstRunWizard extends JPanel {
         }
 
         File screenshotDir = new File(beatorajaDir, "screenshot");
-        if (PlayerKind.detect(beatorajaDir.toPath()) == PlayerKind.BMZ) {
+        // Seeds the player choice, which can be switched later in the settings.
+        PlayerKind playerKind = PlayerKind.detect(beatorajaDir.toPath()) == PlayerKind.BMZ
+                ? PlayerKind.BMZ
+                : PlayerKind.BEATORAJA;
+        if (playerKind == PlayerKind.BMZ) {
             try {
                 BmzPaths bmzPaths = BmzPaths.resolve(beatorajaDir.toPath(), "");
                 beatorajaDir = bmzPaths.dataDirectory().toFile();
@@ -167,6 +171,7 @@ public class FirstRunWizard extends JPanel {
         }
 
         config.setScreenshotDirectory(screenshotDir.getAbsolutePath());
+        config.setPlayerKind(playerKind);
         config.setBeatorajaDirectory(beatorajaDir.getAbsolutePath());
 
         List<AppConfig.DiscordWebhookEntry> webhooks = new ArrayList<>();

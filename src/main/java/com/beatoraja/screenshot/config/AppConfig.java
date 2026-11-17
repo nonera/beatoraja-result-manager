@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 
@@ -33,6 +34,8 @@ public class AppConfig {
     private String screenshotDirectory = "";
     private String beatorajaDirectory = "";
     private String playerName = "";
+    /** {@link PlayerKind#configKey()}; blank in configs saved before the setting existed. */
+    private String player = "";
     private List<DiscordWebhookEntry> discordWebhooks = new ArrayList<>();
     private boolean discordAutoPostEnabled;
     private int discordAutoPostBatchSize = 4;
@@ -102,6 +105,30 @@ public class AppConfig {
 
     public void setPlayerName(String playerName) {
         this.playerName = playerName == null ? "" : playerName;
+    }
+
+    public String getPlayer() {
+        return player;
+    }
+
+    public void setPlayer(String player) {
+        this.player = player == null ? "" : player;
+    }
+
+    /**
+     * The player chosen in the settings. Configs saved before that choice existed fall back to
+     * what the player-data folder looks like, and to beatoraja when that says nothing.
+     */
+    public PlayerKind playerKind() {
+        PlayerKind kind = PlayerKind.fromConfigKey(player);
+        if (kind != PlayerKind.UNKNOWN) {
+            return kind;
+        }
+        return PlayerKind.detect(resolveBeatorajaDirectory()) == PlayerKind.BMZ ? PlayerKind.BMZ : PlayerKind.BEATORAJA;
+    }
+
+    public void setPlayerKind(PlayerKind kind) {
+        setPlayer(kind == null ? "" : kind.configKey());
     }
 
     public java.nio.file.Path resolveBeatorajaDirectory() {

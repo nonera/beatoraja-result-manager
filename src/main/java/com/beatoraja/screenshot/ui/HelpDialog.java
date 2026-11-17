@@ -42,10 +42,12 @@ public final class HelpDialog {
                 ・設定は %APPDATA%\\beatoraja-screenshot-manager\\ に保存されます
 
                 BMZ Player で使う場合:
-                ・設定の「beatoraja / BMZ フォルダ」に config.toml のある data フォルダを指定
+                ・設定の「使用プレイヤー」を BMZ Player にし、
+                  config.toml のある data フォルダを指定
                 ・リザルト画面で F12 を押してスクショを保存
-                ・ファイル名に曲情報が無いため、撮影直前（10分以内）のプレイを
-                  score.db から探して曲名・ランプ・ランクを補完します
+                ・BMZ Player v0.5.2 以降が必要です
+                ・ファイル名から画面種別とランプを読み取り、撮影直前（10分以内）の
+                  プレイを score.db から探して曲名・ランク・判定数を補完します
                 """;
 
         JTextArea area = createReadOnlyTextArea(text, 18, 52);

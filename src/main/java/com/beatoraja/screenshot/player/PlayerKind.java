@@ -3,20 +3,47 @@ package com.beatoraja.screenshot.player;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Which BMS player a configured player-data folder belongs to, detected from its contents. */
+/**
+ * Which BMS player the app works with. Chosen in the settings (people do not run beatoraja and
+ * BMZ Player side by side); {@link #detect} only seeds that choice for configs saved before it.
+ */
 public enum PlayerKind {
-    BEATORAJA("beatoraja"),
-    BMZ("BMZ Player"),
-    UNKNOWN("不明");
+    BEATORAJA("beatoraja", "beatoraja"),
+    BMZ("bmz", "BMZ Player"),
+    UNKNOWN("", "不明");
 
+    private final String configKey;
     private final String displayName;
 
-    PlayerKind(String displayName) {
+    PlayerKind(String configKey, String displayName) {
+        this.configKey = configKey;
         this.displayName = displayName;
+    }
+
+    /** The value stored in the app's config file. */
+    public String configKey() {
+        return configKey;
     }
 
     public String displayName() {
         return displayName;
+    }
+
+    @Override
+    public String toString() {
+        return displayName;
+    }
+
+    /** The kind stored as {@code key}, or {@link #UNKNOWN} for a blank or unrecognized value. */
+    public static PlayerKind fromConfigKey(String key) {
+        if (key != null) {
+            for (PlayerKind kind : values()) {
+                if (kind != UNKNOWN && kind.configKey.equalsIgnoreCase(key.trim())) {
+                    return kind;
+                }
+            }
+        }
+        return UNKNOWN;
     }
 
     /**
