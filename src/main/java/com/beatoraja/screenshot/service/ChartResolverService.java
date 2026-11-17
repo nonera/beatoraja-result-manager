@@ -1,11 +1,13 @@
 package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.config.AppConfig;
+import com.beatoraja.screenshot.model.EnrichedScreenshot;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
 import com.beatoraja.screenshot.player.BmzPaths;
 import com.beatoraja.screenshot.player.BmzPlayLogService;
 import com.beatoraja.screenshot.player.ClearTypeMapper;
+import com.beatoraja.screenshot.player.PlayLogEntry;
 import com.beatoraja.screenshot.player.PlayLogSource;
 import com.beatoraja.screenshot.player.PlayScore;
 import com.beatoraja.screenshot.player.PlayerKind;
@@ -14,7 +16,6 @@ import com.beatoraja.screenshot.player.SongDatabaseService;
 import com.beatoraja.screenshot.table.BmzTableReader;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry;
 import com.beatoraja.screenshot.table.TableLevelParser;
-import com.beatoraja.screenshot.table.TableLookupService;
 import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
@@ -35,9 +36,14 @@ public class ChartResolverService implements AutoCloseable {
     private SongDatabaseService songDatabaseService;
     private Path beatorajaDirectory;
     private PlayerKind playerKind = PlayerKind.UNKNOWN;
+    /** The play-history and song databases opened by the last reload, for {@link #reloadPlayData()}. */
+    private Path playLogDb;
+    private Path songDb;
 
     public void reload(AppConfig config) throws IOException {
         closeConnections();
+        playLogDb = null;
+        songDb = null;
 
         beatorajaDirectory = config.resolveBeatorajaDirectory();
         playerKind = config.playerKind();
@@ -55,8 +61,9 @@ public class ChartResolverService implements AutoCloseable {
         registry.setTablePriority(config.getTablePriorityOrder());
         registry.setNotationRules(toRegistryRules(config.getTableNotationRules()));
         try {
-            playLogService = new PlayerPlayLogService(paths.scoreDataLogDb());
-            songDatabaseService = new SongDatabaseService(paths.songDatabase());
+            playLogDb = paths.scoreDataLogDb();
+            songDb = paths.songDatabase();
+            openPlayData();
         } catch (java.sql.SQLException e) {
             throw new IOException("プレイヤーデータベースを開けません: " + e.getMessage(), e);
         }
@@ -68,10 +75,38 @@ public class ChartResolverService implements AutoCloseable {
             registry.loadFromTables(BmzTableReader.readAll(paths.libraryDb()));
             registry.setTablePriority(config.getTablePriorityOrder());
             registry.setNotationRules(toRegistryRules(config.getTableNotationRules()));
-            playLogService = new BmzPlayLogService(paths.scoreDb());
-            songDatabaseService = SongDatabaseService.forBmzLibrary(paths.libraryDb());
+            playLogDb = paths.scoreDb();
+            songDb = paths.libraryDb();
+            openPlayData();
         } catch (java.sql.SQLException e) {
             throw new IOException("BMZ Player のデータベースを開けません: " + e.getMessage(), e);
+        }
+    }
+
+    private void openPlayData() throws java.sql.SQLException {
+        if (playerKind == PlayerKind.BMZ) {
+            playLogService = new BmzPlayLogService(playLogDb);
+            songDatabaseService = SongDatabaseService.forBmzLibrary(songDb);
+        } else {
+            playLogService = new PlayerPlayLogService(playLogDb);
+            songDatabaseService = new SongDatabaseService(songDb);
+        }
+    }
+
+    /**
+     * Re-reads the play history and the song database - enough to see a play saved, or a song
+     * added, after the last reload - leaving the difficulty tables (slow to parse) as they are.
+     */
+    public void reloadPlayData() throws IOException {
+        if (playLogDb == null) {
+            return;
+        }
+        closeConnections();
+        try {
+            openPlayData();
+        } catch (java.sql.SQLException e) {
+            closeConnections();
+            throw new IOException("プレイ履歴・曲データベースを開けません: " + e.getMessage(), e);
         }
     }
 
@@ -123,7 +158,7 @@ public class ChartResolverService implements AutoCloseable {
         return result;
     }
 
-    public TableLookupService.EnrichedScreenshot enrich(ScreenshotEntry entry) {
+    public EnrichedScreenshot enrich(ScreenshotEntry entry) {
         ResolvedChart resolved = resolveFromPlayerData(entry);
         if (resolved != null) {
             return buildEnriched(withPlayResult(entry, resolved), resolved);
@@ -138,19 +173,18 @@ public class ChartResolverService implements AutoCloseable {
         if (entry.getCapturedAt() == null) {
             return null;
         }
-        if ("Play".equals(entry.getStateLabel()) || "Music Select".equals(entry.getStateLabel())
-                || "Decide".equals(entry.getStateLabel()) || "Config".equals(entry.getStateLabel())) {
+        if (!entry.mayShowPlayResult()) {
             return null;
         }
 
         try {
             Integer clearId = ClearTypeMapper.toClearId(entry.getClearType());
-            List<PlayerPlayLogService.PlayLogEntry> candidates = playLogService.findNear(entry.getCapturedAt(), clearId);
+            List<PlayLogEntry> candidates = playLogService.findNear(entry.getCapturedAt(), clearId);
             if (candidates.isEmpty()) {
                 return null;
             }
 
-            PlayerPlayLogService.PlayLogEntry best = candidates.get(0);
+            PlayLogEntry best = candidates.get(0);
             SongDatabaseService.SongRecord song = songDatabaseService != null
                     ? songDatabaseService.findBySha256(best.sha256())
                     : null;
@@ -187,7 +221,7 @@ public class ChartResolverService implements AutoCloseable {
         }
     }
 
-    private TableLookupService.EnrichedScreenshot enrichFromFilename(ScreenshotEntry entry) {
+    private EnrichedScreenshot enrichFromFilename(ScreenshotEntry entry) {
         TableLevelParser.ParsedTableLevel parsed;
         if (entry.isBmsLevelOnly()) {
             parsed = new TableLevelParser.ParsedTableLevel("", entry.getLevel(), true);
@@ -244,7 +278,7 @@ public class ChartResolverService implements AutoCloseable {
         );
     }
 
-    private TableLookupService.EnrichedScreenshot buildEnriched(ScreenshotEntry entry, ResolvedChart resolved) {
+    private EnrichedScreenshot buildEnriched(ScreenshotEntry entry, ResolvedChart resolved) {
         TableLevelParser.ParsedTableLevel parsed = resolved.primaryNotation().isBlank()
                 ? TableLevelParser.ParsedTableLevel.empty()
                 : registry.parseNotation(resolved.primaryNotation());
@@ -259,7 +293,7 @@ public class ChartResolverService implements AutoCloseable {
 
         List<String> available = mergeNotations(resolved.availableNotations(), resolved.primaryNotation(), entry.getRawTableFolder());
 
-        return new TableLookupService.EnrichedScreenshot(
+        return new EnrichedScreenshot(
                 entry,
                 resolved.sha256(),
                 resolved.md5(),

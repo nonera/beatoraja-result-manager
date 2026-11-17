@@ -47,6 +47,27 @@ public enum PlayerKind {
     }
 
     /**
+     * The player folder a screenshot folder belongs to, for when only the screenshot folder is
+     * configured: the parent of beatoraja's {@code screenshot} folder or of BMZ Player's default
+     * {@code screenshots} folder inside its data folder; otherwise the folder itself.
+     */
+    public static Path playerFolderOf(Path screenshotDirectory) {
+        if (screenshotDirectory == null) {
+            return null;
+        }
+        Path dir = screenshotDirectory.toAbsolutePath().normalize();
+        String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+        if ("screenshot".equalsIgnoreCase(name)) {
+            return dir.getParent();
+        }
+        if ("screenshots".equalsIgnoreCase(name) && dir.getParent() != null
+                && BmzPaths.findDataDirectory(dir.getParent()) != null) {
+            return dir.getParent();
+        }
+        return dir;
+    }
+
+    /**
      * beatoraja folders carry {@code config_sys.json}; BMZ Player data folders carry
      * {@code config.toml} (also accepted one level down in {@code data/}, i.e. when the
      * portable install's exe folder is chosen instead of its data folder).

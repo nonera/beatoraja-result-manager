@@ -11,10 +11,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 public class PlayerPlayLogService implements PlayLogSource {
 
@@ -25,23 +22,25 @@ public class PlayerPlayLogService implements PlayLogSource {
             "epg", "lpg", "egr", "lgr", "egd", "lgd", "ebd", "lbd", "epr", "lpr", "ems", "lms", "notes");
 
     private final boolean available;
-    private final List<PlayLogEntry> entriesByDate = new ArrayList<>();
+    private final PlayHistory history;
 
     public PlayerPlayLogService(Path scoreDataLogDb) throws SQLException {
         if (scoreDataLogDb == null || !Files.exists(scoreDataLogDb)) {
             available = false;
+            history = new PlayHistory(List.of());
             return;
         }
+        List<PlayLogEntry> entries = new ArrayList<>();
 
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + scoreDataLogDb.toAbsolutePath());
              Statement statement = connection.createStatement()) {
-            boolean hasScoreColumns = readColumns(statement).containsAll(SCORE_COLUMNS);
+            boolean hasScoreColumns = PlayHistory.columns(statement, "scoredatalog").containsAll(SCORE_COLUMNS);
             String columns = hasScoreColumns
                     ? "sha256, clear, date, " + String.join(", ", SCORE_COLUMNS)
                     : "sha256, clear, date";
             try (ResultSet rs = statement.executeQuery("SELECT " + columns + " FROM scoredatalog")) {
                 while (rs.next()) {
-                    entriesByDate.add(new PlayLogEntry(
+                    entries.add(new PlayLogEntry(
                             rs.getString("sha256"),
                             rs.getInt("clear"),
                             rs.getLong("date"),
@@ -50,18 +49,8 @@ public class PlayerPlayLogService implements PlayLogSource {
                 }
             }
         }
-        entriesByDate.sort(Comparator.comparingLong(PlayLogEntry::dateEpoch));
+        history = new PlayHistory(entries);
         available = true;
-    }
-
-    private static Set<String> readColumns(Statement statement) throws SQLException {
-        Set<String> columns = new HashSet<>();
-        try (ResultSet rs = statement.executeQuery("PRAGMA table_info(scoredatalog)")) {
-            while (rs.next()) {
-                columns.add(rs.getString("name").toLowerCase(Locale.ROOT));
-            }
-        }
-        return columns;
     }
 
     private static PlayScore readScore(ResultSet rs) throws SQLException {
@@ -76,10 +65,12 @@ public class PlayerPlayLogService implements PlayLogSource {
         );
     }
 
+    @Override
     public boolean isAvailable() {
         return available;
     }
 
+    @Override
     public List<PlayLogEntry> findNear(LocalDateTime capturedAt, Integer expectedClearId) {
         if (!available || capturedAt == null) {
             return List.of();
@@ -89,15 +80,7 @@ public class PlayerPlayLogService implements PlayLogSource {
         long from = center - BEFORE_WINDOW_SECONDS;
         long to = center + AFTER_WINDOW_SECONDS;
 
-        int fromIndex = lowerBound(from);
-        List<PlayLogEntry> entries = new ArrayList<>();
-        for (int i = fromIndex; i < entriesByDate.size(); i++) {
-            PlayLogEntry entry = entriesByDate.get(i);
-            if (entry.dateEpoch() > to) {
-                break;
-            }
-            entries.add(entry);
-        }
+        List<PlayLogEntry> entries = history.between(from, to);
 
         if (expectedClearId != null) {
             List<PlayLogEntry> filtered = entries.stream()
@@ -112,26 +95,8 @@ public class PlayerPlayLogService implements PlayLogSource {
         return entries;
     }
 
-    private int lowerBound(long fromInclusive) {
-        int lo = 0;
-        int hi = entriesByDate.size();
-        while (lo < hi) {
-            int mid = (lo + hi) >>> 1;
-            if (entriesByDate.get(mid).dateEpoch() < fromInclusive) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-        return lo;
-    }
-
     @Override
     public void close() {
-        entriesByDate.clear();
-    }
-
-    /** {@code score} is null when the scoredatalog table has no judge-count columns. */
-    public record PlayLogEntry(String sha256, int clearId, long dateEpoch, PlayScore score) {
+        history.clear();
     }
 }

@@ -2,15 +2,18 @@ package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.config.ClearLampLabels;
-import com.beatoraja.screenshot.service.ClixService;
-import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.player.BeatorajaPaths;
 import com.beatoraja.screenshot.player.BmzPaths;
 import com.beatoraja.screenshot.player.PlayerKind;
+import com.beatoraja.screenshot.service.ClixService;
+import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.util.AppIcons;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -24,23 +27,26 @@ import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.AbstractTableModel;
 import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Desktop;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-import java.awt.Desktop;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class SettingsDialog extends JDialog {
 
@@ -86,34 +92,28 @@ public class SettingsDialog extends JDialog {
         loadValues();
         refreshTwitterStatusQuietly();
         setSize(780, 840);
-        setMinimumSize(new java.awt.Dimension(640, 480));
+        setMinimumSize(new Dimension(640, 480));
         setResizable(true);
         setLocationRelativeTo(owner);
     }
 
     /** Makes a BoxLayout child grow to the scroll pane's full width. */
-    private static JPanel stretch(JPanel panel) {
-        panel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        panel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, panel.getPreferredSize().height));
-        return panel;
-    }
-
     private void buildUi() {
         JPanel stack = new JPanel();
-        stack.setLayout(new javax.swing.BoxLayout(stack, javax.swing.BoxLayout.Y_AXIS));
+        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
         stack.setBorder(new EmptyBorder(12, 12, 12, 12));
         stack.add(fullWidth(buildFolderSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildTwitterSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildWebhookSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildClearLampLabelSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildDiscordAutoSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildAppUpdateSection()));
-        stack.add(javax.swing.Box.createVerticalStrut(8));
+        stack.add(Box.createVerticalStrut(8));
         stack.add(fullWidth(buildAppearanceSection()));
 
         // NORTH keeps the preferred height while stretching children to the viewport width.
@@ -127,7 +127,7 @@ public class SettingsDialog extends JDialog {
 
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.setBorder(new EmptyBorder(8, 12, 12, 12));
-        JPanel bottomActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
+        JPanel bottomActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         JButton openLogs = new JButton("ログフォルダを開く");
         openLogs.addActionListener(e -> openLogFolder());
         bottomActions.add(openLogs);
@@ -143,14 +143,14 @@ public class SettingsDialog extends JDialog {
     }
 
     private static JPanel fullWidth(JPanel panel) {
-        panel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        panel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
         return panel;
     }
 
     private JPanel buildFolderSection() {
         JPanel form = new JPanel(new GridBagLayout());
-        form.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        form.setAlignmentX(Component.LEFT_ALIGNMENT);
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(6, 6, 6, 6);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -233,7 +233,7 @@ public class SettingsDialog extends JDialog {
 
     private JPanel buildTwitterSection() {
         JPanel form = new JPanel(new GridBagLayout());
-        form.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        form.setAlignmentX(Component.LEFT_ALIGNMENT);
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(6, 6, 6, 6);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -258,7 +258,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.gridwidth = 2;
-        JPanel twitterActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
+        JPanel twitterActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         JButton loginTwitter = new JButton("Twitter にログイン");
         loginTwitter.addActionListener(e -> loginTwitter());
         twitterActions.add(loginTwitter);
@@ -277,12 +277,12 @@ public class SettingsDialog extends JDialog {
         webhookTable.getColumnModel().getColumn(0).setPreferredWidth(120);
         webhookTable.getColumnModel().getColumn(1).setPreferredWidth(480);
         JScrollPane webhookScroll = new JScrollPane(webhookTable);
-        webhookScroll.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord Webhook"));
-        webhookScroll.setPreferredSize(new java.awt.Dimension(520, 140));
-        webhookScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        webhookScroll.setBorder(BorderFactory.createTitledBorder("Discord Webhook"));
+        webhookScroll.setPreferredSize(new Dimension(520, 140));
+        webhookScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JPanel webhookActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
-        webhookActions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        JPanel webhookActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        webhookActions.setAlignmentX(Component.LEFT_ALIGNMENT);
         JButton addWebhook = new JButton("追加");
         addWebhook.addActionListener(e -> webhookTableModel.addRow());
         JButton removeWebhook = new JButton("削除");
@@ -296,7 +296,7 @@ public class SettingsDialog extends JDialog {
         webhookActions.add(removeWebhook);
 
         JPanel section = new JPanel(new BorderLayout(0, 4));
-        section.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        section.setAlignmentX(Component.LEFT_ALIGNMENT);
         section.add(webhookScroll, BorderLayout.CENTER);
         section.add(webhookActions, BorderLayout.SOUTH);
         return section;
@@ -309,14 +309,14 @@ public class SettingsDialog extends JDialog {
         table.getColumnModel().getColumn(2).setPreferredWidth(120);
         table.getColumnModel().getColumn(3).setPreferredWidth(90);
         JScrollPane scroll = new JScrollPane(table);
-        scroll.setBorder(javax.swing.BorderFactory.createTitledBorder("クリアランプ表示名（俗称）"));
-        scroll.setPreferredSize(new java.awt.Dimension(520, 260));
-        scroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        scroll.setBorder(BorderFactory.createTitledBorder("クリアランプ表示名（俗称）"));
+        scroll.setPreferredSize(new Dimension(520, 260));
+        scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel hint = new JLabel("<html>投稿文や一覧に表示するクリア名を俗称などに変更できます（空欄でデフォルト表示に戻ります）<br>"
                 + "略称は 8 枚以上を 1 ツイートにまとめるときの「HC : st3 st2」形式で使います。"
                 + "チェックを外したランプの曲はまとめ投稿文に載せません</html>");
-        hint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        hint.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JButton resetAll = new JButton("すべてデフォルトに戻す");
         resetAll.addActionListener(e -> {
@@ -324,12 +324,12 @@ public class SettingsDialog extends JDialog {
             clearLampLabelTableModel.setShortOverrides(Map.of());
             clearLampLabelTableModel.setGroupedVisibility(Map.of());
         });
-        JPanel actions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 0));
-        actions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actions.setAlignmentX(Component.LEFT_ALIGNMENT);
         actions.add(resetAll);
 
         JPanel section = new JPanel(new BorderLayout(0, 4));
-        section.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        section.setAlignmentX(Component.LEFT_ALIGNMENT);
         section.add(hint, BorderLayout.NORTH);
         section.add(scroll, BorderLayout.CENTER);
         section.add(actions, BorderLayout.SOUTH);
@@ -338,8 +338,8 @@ public class SettingsDialog extends JDialog {
 
     private JPanel buildDiscordAutoSection() {
         JPanel discordAutoPanel = new JPanel(new GridBagLayout());
-        discordAutoPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        discordAutoPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Discord 自動投稿"));
+        discordAutoPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        discordAutoPanel.setBorder(BorderFactory.createTitledBorder("Discord 自動投稿"));
         GridBagConstraints autoGbc = new GridBagConstraints();
         autoGbc.insets = new Insets(6, 6, 6, 6);
         autoGbc.fill = GridBagConstraints.HORIZONTAL;
@@ -378,8 +378,8 @@ public class SettingsDialog extends JDialog {
 
     private JPanel buildAppUpdateSection() {
         JPanel appUpdatePanel = new JPanel(new GridBagLayout());
-        appUpdatePanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        appUpdatePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("アプリ更新"));
+        appUpdatePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        appUpdatePanel.setBorder(BorderFactory.createTitledBorder("アプリ更新"));
         GridBagConstraints updateGbc = new GridBagConstraints();
         updateGbc.insets = new Insets(6, 6, 6, 6);
         updateGbc.gridx = 0;
@@ -401,8 +401,8 @@ public class SettingsDialog extends JDialog {
         fontFamilyCombo.setPrototypeDisplayValue("Yu Gothic UI");
 
         JPanel appearancePanel = new JPanel(new GridBagLayout());
-        appearancePanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        appearancePanel.setBorder(javax.swing.BorderFactory.createTitledBorder("外観"));
+        appearancePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        appearancePanel.setBorder(BorderFactory.createTitledBorder("外観"));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(6, 6, 6, 6);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -447,7 +447,7 @@ public class SettingsDialog extends JDialog {
         // Copies: the table edits rows in place, and only saveSettings may change the config.
         webhookTableModel.setRows(config.getDiscordWebhooks().stream()
                 .map(AppConfig.DiscordWebhookEntry::copy)
-                .collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
+                .collect(Collectors.toCollection(ArrayList::new)));
         clearLampLabelTableModel.setOverrides(config.getClearLampLabels());
         clearLampLabelTableModel.setShortOverrides(config.getClearLampShortLabels());
         clearLampLabelTableModel.setGroupedVisibility(config.getClearLampGroupedVisibility());
@@ -509,7 +509,7 @@ public class SettingsDialog extends JDialog {
         }
         new Thread(() -> {
             ClixService.AuthResult result = new TwitterAuthService(config).verifyStoredSession();
-            javax.swing.SwingUtilities.invokeLater(() -> twitterStatusLabel.setText(result.message()));
+            SwingUtilities.invokeLater(() -> twitterStatusLabel.setText(result.message()));
         }, "twitter-auth-status").start();
     }
 
@@ -550,7 +550,7 @@ public class SettingsDialog extends JDialog {
                 result = authService.verifyStoredSession();
             }
             ClixService.AuthResult finalResult = result;
-            javax.swing.SwingUtilities.invokeLater(() ->
+            SwingUtilities.invokeLater(() ->
                     twitterStatusLabel.setText(finalResult.message()));
         }, "twitter-auth-check-settings").start();
     }
@@ -610,200 +610,6 @@ public class SettingsDialog extends JDialog {
             dispose();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "保存に失敗しました: " + e.getMessage(), "エラー", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    /**
-     * Fixed rows, one per canonical clear lamp type - unlike {@link WebhookTableModel} there is
-     * nothing to add or remove, only each row's custom display name to edit. A blank value means
-     * "use the default beatoraja name" and is dropped rather than stored.
-     */
-    private static class ClearLampLabelTableModel extends AbstractTableModel {
-        private final String[] columns = {"クリアランプ", "表示名（空欄でデフォルト）", "略称（まとめ投稿用）", "まとめに載せる"};
-        /** Visibility overrides; a value equal to the default is not stored. */
-        private Map<String, Boolean> groupedVisibility = new LinkedHashMap<>();
-        private final List<String> canonicalTypes = ClearLampLabels.CANONICAL_ORDER;
-        private Map<String, String> overrides = new LinkedHashMap<>();
-        /** Short-name overrides; a value equal to the default is not stored. */
-        private Map<String, String> shortOverrides = new LinkedHashMap<>();
-
-        public void setOverrides(Map<String, String> overrides) {
-            this.overrides = new LinkedHashMap<>(overrides == null ? Map.of() : overrides);
-            fireTableDataChanged();
-        }
-
-        public void setShortOverrides(Map<String, String> shortOverrides) {
-            this.shortOverrides = new LinkedHashMap<>(shortOverrides == null ? Map.of() : shortOverrides);
-            fireTableDataChanged();
-        }
-
-        public void setGroupedVisibility(Map<String, Boolean> groupedVisibility) {
-            this.groupedVisibility = new LinkedHashMap<>(groupedVisibility == null ? Map.of() : groupedVisibility);
-            fireTableDataChanged();
-        }
-
-        public Map<String, Boolean> getGroupedVisibility() {
-            Map<String, Boolean> result = new LinkedHashMap<>();
-            for (String type : canonicalTypes) {
-                Boolean value = groupedVisibility.get(type);
-                if (value != null) {
-                    result.put(type, value);
-                }
-            }
-            return result;
-        }
-
-        @Override
-        public Class<?> getColumnClass(int columnIndex) {
-            return columnIndex == 3 ? Boolean.class : String.class;
-        }
-
-        public Map<String, String> getOverrides() {
-            return nonBlank(overrides);
-        }
-
-        public Map<String, String> getShortOverrides() {
-            return nonBlank(shortOverrides);
-        }
-
-        private Map<String, String> nonBlank(Map<String, String> values) {
-            Map<String, String> result = new LinkedHashMap<>();
-            for (String type : canonicalTypes) {
-                String value = values.get(type);
-                if (value != null && !value.isBlank()) {
-                    result.put(type, value.trim());
-                }
-            }
-            return result;
-        }
-
-        @Override
-        public int getRowCount() {
-            return canonicalTypes.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex >= 1;
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            String type = canonicalTypes.get(rowIndex);
-            if (columnIndex == 0) {
-                return type;
-            }
-            if (columnIndex == 2) {
-                return ClearLampLabels.resolveShort(type, shortOverrides);
-            }
-            if (columnIndex == 3) {
-                return ClearLampLabels.isShownInGroupedPost(type, groupedVisibility);
-            }
-            String value = overrides.get(type);
-            return value == null ? "" : value;
-        }
-
-        @Override
-        public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-            if (columnIndex < 1) {
-                return;
-            }
-            String type = canonicalTypes.get(rowIndex);
-            if (columnIndex == 3) {
-                boolean shown = Boolean.TRUE.equals(aValue);
-                if (shown == ClearLampLabels.isShownInGroupedPostByDefault(type)) {
-                    groupedVisibility.remove(type);
-                } else {
-                    groupedVisibility.put(type, shown);
-                }
-                fireTableCellUpdated(rowIndex, columnIndex);
-                return;
-            }
-            String text = aValue == null ? "" : String.valueOf(aValue).trim();
-            if (columnIndex == 2) {
-                // Blank or the default itself: keep following the default.
-                if (text.isBlank() || text.equals(ClearLampLabels.defaultShortName(type))) {
-                    shortOverrides.remove(type);
-                } else {
-                    shortOverrides.put(type, text);
-                }
-            } else if (text.isBlank()) {
-                overrides.remove(type);
-            } else {
-                overrides.put(type, text);
-            }
-            fireTableCellUpdated(rowIndex, columnIndex);
-        }
-    }
-
-    private static class WebhookTableModel extends AbstractTableModel {
-        private final String[] columns = {"名前", "Webhook URL"};
-        private List<AppConfig.DiscordWebhookEntry> rows = new ArrayList<>();
-
-        public void setRows(List<AppConfig.DiscordWebhookEntry> rows) {
-            this.rows = new ArrayList<>(rows);
-            fireTableDataChanged();
-        }
-
-        public List<AppConfig.DiscordWebhookEntry> getRows() {
-            return new ArrayList<>(rows);
-        }
-
-        public void addRow() {
-            rows.add(new AppConfig.DiscordWebhookEntry("", ""));
-            fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
-        }
-
-        public void removeRow(int index) {
-            rows.remove(index);
-            fireTableRowsDeleted(index, index);
-        }
-
-        @Override
-        public int getRowCount() {
-            return rows.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return true;
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            AppConfig.DiscordWebhookEntry row = rows.get(rowIndex);
-            return columnIndex == 0 ? row.getName() : row.getUrl();
-        }
-
-        @Override
-        public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-            AppConfig.DiscordWebhookEntry row = rows.get(rowIndex);
-            if (columnIndex == 0) {
-                row.setName(String.valueOf(aValue));
-            } else {
-                row.setUrl(String.valueOf(aValue));
-            }
-            fireTableCellUpdated(rowIndex, columnIndex);
         }
     }
 }

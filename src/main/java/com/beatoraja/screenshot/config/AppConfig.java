@@ -7,6 +7,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
+import com.beatoraja.screenshot.util.AtomicFiles;
 
 import java.io.IOException;
 import java.util.logging.Level;
@@ -74,9 +75,9 @@ public class AppConfig {
         }
     }
 
+    /** Writes the config through a temporary file, so a crash mid-save cannot corrupt it. */
     public void save() throws IOException {
-        Files.createDirectories(AppPaths.appDataDir());
-        MAPPER.writeValue(AppPaths.configFile().toFile(), this);
+        AtomicFiles.write(AppPaths.configFile(), MAPPER.writeValueAsBytes(this));
     }
 
     public boolean isFirstRunCompleted() {
@@ -140,7 +141,7 @@ public class AppConfig {
             return java.nio.file.Path.of(beatorajaDirectory);
         }
         if (screenshotDirectory != null && !screenshotDirectory.isBlank()) {
-            return com.beatoraja.screenshot.table.TableLookupService.deriveBeatorajaDirectory(
+            return com.beatoraja.screenshot.player.PlayerKind.playerFolderOf(
                     java.nio.file.Path.of(screenshotDirectory)
             );
         }

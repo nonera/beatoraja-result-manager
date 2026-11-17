@@ -1,6 +1,6 @@
 package com.beatoraja.screenshot.db;
 
-import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.model.EnrichedScreenshot;
 import com.beatoraja.screenshot.util.AppPaths;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,7 +87,7 @@ public class ScreenshotDatabase implements AutoCloseable {
         }
     }
 
-    public void upsert(TableLookupService.EnrichedScreenshot enriched) throws SQLException {
+    public void upsert(EnrichedScreenshot enriched) throws SQLException {
         String now = LocalDateTime.now().format(DB_TIME);
         var entry = enriched.entry();
         String capturedAt = entry.getCapturedAt() == null ? null : entry.getCapturedAt().format(DB_TIME);
@@ -140,10 +140,10 @@ public class ScreenshotDatabase implements AutoCloseable {
         }
     }
 
-    public void syncAll(List<TableLookupService.EnrichedScreenshot> entries) throws SQLException {
+    public void syncAll(List<EnrichedScreenshot> entries) throws SQLException {
         connection.setAutoCommit(false);
         try {
-            for (TableLookupService.EnrichedScreenshot entry : entries) {
+            for (EnrichedScreenshot entry : entries) {
                 upsert(entry);
             }
             removeMissingFiles();
@@ -199,6 +199,22 @@ public class ScreenshotDatabase implements AutoCloseable {
             }
         }
         return null;
+    }
+
+    /** The row with {@code id}, or null if there is none. */
+    public ScreenshotRecord findById(long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id, file_path, file_name, captured_at, title, sha256, md5, table_symbol, table_level_num, level,
+                       rank, clear_type, state_label, post_notation, available_notations, notation_edited,
+                       resolved_from_player, flagged
+                FROM screenshots
+                WHERE id = ?
+                """)) {
+            statement.setLong(1, id);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next() ? mapRecord(rs) : null;
+            }
+        }
     }
 
     public void delete(long id) throws SQLException {

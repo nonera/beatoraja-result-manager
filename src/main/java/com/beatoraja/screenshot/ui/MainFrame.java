@@ -4,6 +4,7 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.config.PostTextFormat;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
+import com.beatoraja.screenshot.model.EnrichedScreenshot;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
@@ -21,7 +22,6 @@ import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
 import com.beatoraja.screenshot.table.DifficultyTableRegistry;
-import com.beatoraja.screenshot.table.TableLookupService;
 import com.beatoraja.screenshot.ui.theme.AccentButton;
 import com.beatoraja.screenshot.ui.theme.UiTheme;
 import com.beatoraja.screenshot.util.AppIcons;
@@ -94,7 +94,7 @@ public class MainFrame extends JFrame {
     private final JButton twitterButton = new AccentButton("Twitter に投稿", UiTheme.twitterAccent());
     private final JButton discordButton = new AccentButton("Discord に送信", UiTheme.discordAccent());
     private JMenuItem refreshMenuItem;
-    private SwingWorker<List<TableLookupService.EnrichedScreenshot>, Integer> indexingWorker;
+    private SwingWorker<List<EnrichedScreenshot>, Integer> indexingWorker;
 
     public MainFrame(AppConfig config) {
         super("beatoraja Screenshot Manager v" + AppVersion.get());
@@ -130,6 +130,10 @@ public class MainFrame extends JFrame {
         reloadDatabaseQuietly();
         refreshScreenshots();
         startWatcher();
+        if (postedStateStore.loadProblem() != null) {
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, postedStateStore.loadProblem(),
+                    "投稿済みの記録", JOptionPane.WARNING_MESSAGE));
+        }
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -388,7 +392,7 @@ public class MainFrame extends JFrame {
             // fall through to the resolved default
         }
         try {
-            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+            EnrichedScreenshot enriched = chartResolverService.enrich(entry);
             String notation = savedNotation.isBlank() ? enriched.defaultPostNotation() : savedNotation;
             return new PostContext(notation, enriched.score());
         } catch (Exception e) {
@@ -414,20 +418,18 @@ public class MainFrame extends JFrame {
                 : null);
     }
 
+    /** Reloads the tables and play data, then scans the screenshot folder and indexes it in the background. */
     private void refreshScreenshots() {
-        Path screenshotDir = Path.of(config.getScreenshotDirectory());
-        try {
-            reloadTableRegistry();
-            List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir, config.playerKind());
-            statusLabel.setText(entries.size() + " 件のスクショを読み込みました");
-            startIndexing(entries);
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "スクショフォルダの読み込みに失敗しました: " + e.getMessage(),
-                    "エラー", JOptionPane.ERROR_MESSAGE);
-        }
+        reloadTableRegistry();
+        startIndexing(Path.of(config.getScreenshotDirectory()));
     }
 
-    private void startIndexing(List<ScreenshotEntry> entries) {
+    /**
+     * Lists the screenshot folder and matches every screenshot to its chart on a worker
+     * thread - both can take a while for a large folder - then syncs the results into the
+     * database on the EDT.
+     */
+    private void startIndexing(Path screenshotDir) {
         if (screenshotDatabase == null) {
             return;
         }
@@ -435,18 +437,25 @@ public class MainFrame extends JFrame {
             indexingWorker.cancel(true);
         }
 
-        int total = entries.size();
+        PlayerKind player = config.playerKind();
         indexProgressBar.setMinimum(0);
-        indexProgressBar.setMaximum(total);
         indexProgressBar.setValue(0);
-        indexProgressBar.setString("インデックス作成中... 0 / " + total);
+        indexProgressBar.setString("スクショフォルダを読み込み中...");
+        indexProgressBar.setIndeterminate(true);
         indexProgressBar.setVisible(true);
         refreshMenuItem.setEnabled(false);
 
         indexingWorker = new SwingWorker<>() {
             @Override
-            protected List<TableLookupService.EnrichedScreenshot> doInBackground() {
-                List<TableLookupService.EnrichedScreenshot> enriched = new ArrayList<>(total);
+            protected List<EnrichedScreenshot> doInBackground() throws IOException {
+                List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir, player);
+                int total = entries.size();
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText(total + " 件のスクショを読み込みました");
+                    indexProgressBar.setIndeterminate(false);
+                    indexProgressBar.setMaximum(total);
+                });
+                List<EnrichedScreenshot> enriched = new ArrayList<>(total);
                 int done = 0;
                 for (ScreenshotEntry entry : entries) {
                     if (isCancelled()) {
@@ -463,20 +472,31 @@ public class MainFrame extends JFrame {
             protected void process(List<Integer> chunks) {
                 int latest = chunks.get(chunks.size() - 1);
                 indexProgressBar.setValue(latest);
-                indexProgressBar.setString("インデックス作成中... " + latest + " / " + total);
+                indexProgressBar.setString("インデックス作成中... " + latest + " / " + indexProgressBar.getMaximum());
             }
 
             @Override
             protected void done() {
                 refreshMenuItem.setEnabled(true);
+                indexProgressBar.setIndeterminate(false);
                 indexProgressBar.setVisible(false);
                 if (isCancelled()) {
                     return;
                 }
+                List<EnrichedScreenshot> enriched;
                 try {
-                    screenshotDatabase.syncAll(get());
+                    enriched = get();
+                } catch (Exception e) {
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    JOptionPane.showMessageDialog(MainFrame.this,
+                            "スクショフォルダの読み込みに失敗しました: " + cause.getMessage(),
+                            "エラー", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                try {
+                    screenshotDatabase.syncAll(enriched);
                     databasePanel.reload(screenshotDatabase);
-                    statusLabel.setText(total + " 件のスクショ");
+                    statusLabel.setText(enriched.size() + " 件のスクショ");
                 } catch (Exception e) {
                     statusLabel.setText("DB 同期失敗: " + e.getMessage());
                 }
@@ -490,12 +510,15 @@ public class MainFrame extends JFrame {
      * Player screenshots that is where the song, lamp and rank come from, since their file
      * names do not identify the chart.
      */
-    private TableLookupService.EnrichedScreenshot syncDatabaseEntry(ScreenshotEntry entry) {
-        // The new screenshot's play result may have just been written to
-        // scoredatalog.db, after chartResolverService last loaded it, so
-        // reload the player databases before resolving the sha256/md5.
-        reloadTableRegistry();
-        TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+    private EnrichedScreenshot syncDatabaseEntry(ScreenshotEntry entry) {
+        // The new screenshot's play may have been saved (or its song added) after the player
+        // data was last read; re-read that, but not the difficulty tables, which are slow.
+        try {
+            chartResolverService.reloadPlayData();
+        } catch (IOException e) {
+            statusLabel.setText("プレイ履歴の読み込みに失敗: " + e.getMessage());
+        }
+        EnrichedScreenshot enriched = chartResolverService.enrich(entry);
         if (screenshotDatabase != null) {
             try {
                 screenshotDatabase.upsert(enriched);
@@ -522,7 +545,7 @@ public class MainFrame extends JFrame {
 
     private void onScreenshotDetected(ScreenshotEntry entry) {
         LOG.info("Screenshot detected: " + entry.getFileName() + " (" + entry.getStateLabel() + ")");
-        TableLookupService.EnrichedScreenshot resolved = syncDatabaseEntry(entry);
+        EnrichedScreenshot resolved = syncDatabaseEntry(entry);
         if (chartResolverService.getPlayerKind() == PlayerKind.BMZ && entry.isResultScreenshot()
                 && !resolved.resolvedFromPlayerData()) {
             // BMZ Player may still be saving the play to score.db; try once more shortly.
@@ -810,7 +833,6 @@ public class MainFrame extends JFrame {
                 return;
             }
             reloadDiscordWebhooks();
-            reloadTableRegistry();
             applyClearLampLabels();
             refreshScreenshots();
             startWatcher();

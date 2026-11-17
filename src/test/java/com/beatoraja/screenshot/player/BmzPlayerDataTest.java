@@ -98,9 +98,9 @@ class BmzPlayerDataTest {
         }
 
         BmzPlayLogService service = new BmzPlayLogService(scoreDb);
-        List<PlayerPlayLogService.PlayLogEntry> found = service.findNear(at(1320), null);
+        List<PlayLogEntry> found = service.findNear(at(1320), null);
         assertEquals(1, found.size());
-        PlayerPlayLogService.PlayLogEntry play = found.get(0);
+        PlayLogEntry play = found.get(0);
         assertEquals(SHA, play.sha256());
         assertEquals(6, play.clearId());
         assertNotNull(play.score());

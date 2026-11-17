@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
+import com.beatoraja.screenshot.util.AtomicFiles;
 
 import java.io.IOException;
 import java.util.logging.Level;
@@ -24,10 +25,30 @@ public class PostedStateStore {
             .enable(SerializationFeature.INDENT_OUTPUT);
 
     private final Map<String, PostedRecord> records = new HashMap<>();
+    private final Path file;
+    /** Why the saved state could not be read, for telling the user; null when it loaded fine. */
+    private String loadProblem;
+
+    /** An empty store that saves to the app's posted.json. */
+    public PostedStateStore() {
+        this(AppPaths.postedStateFile());
+    }
+
+    private PostedStateStore(Path file) {
+        this.file = file;
+    }
 
     public static PostedStateStore load() {
-        PostedStateStore store = new PostedStateStore();
-        Path file = AppPaths.postedStateFile();
+        return load(AppPaths.postedStateFile());
+    }
+
+    /**
+     * Reads the posted state from {@code file}. An unreadable file is renamed aside rather than
+     * silently treated as empty (which would make every screenshot look unposted and invite
+     * re-sending), and {@link #loadProblem()} explains what happened.
+     */
+    static PostedStateStore load(Path file) {
+        PostedStateStore store = new PostedStateStore(file);
         if (!Files.exists(file)) {
             return store;
         }
@@ -38,15 +59,28 @@ public class PostedStateStore {
             }
         } catch (IOException e) {
             LOG.log(Level.WARNING, "Failed to load posted state from " + file.toAbsolutePath(), e);
+            String kept;
+            try {
+                kept = AtomicFiles.setAside(file).getFileName().toString();
+            } catch (IOException moveError) {
+                LOG.log(Level.WARNING, "Failed to set aside unreadable posted state", moveError);
+                kept = file.getFileName().toString();
+            }
+            store.loadProblem = "投稿済みの記録(" + file.getFileName() + ")を読めなかったため、" + kept
+                    + " として残し、空の記録で始めました。投稿済みの表示と Discord の自動投稿に注意してください。";
         }
         return store;
     }
 
+    public String loadProblem() {
+        return loadProblem;
+    }
+
+    /** Writes the state through a temporary file, so a crash mid-save cannot corrupt it. */
     public void save() throws IOException {
-        Files.createDirectories(AppPaths.appDataDir());
         PostedStateFile data = new PostedStateFile();
         data.entries = records;
-        MAPPER.writeValue(AppPaths.postedStateFile().toFile(), data);
+        AtomicFiles.write(file, MAPPER.writeValueAsBytes(data));
     }
 
     public PostedRecord get(String fileName) {

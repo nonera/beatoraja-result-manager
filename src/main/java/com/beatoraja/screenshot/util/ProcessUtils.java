@@ -19,7 +19,7 @@ public final class ProcessUtils {
             if (!process.isAlive()) {
                 return;
             }
-            if (isWindows()) {
+            if (OsInfo.isWindows()) {
                 Process kill = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(process.pid()))
                         .redirectErrorStream(true)
                         .start();
@@ -37,7 +37,4 @@ public final class ProcessUtils {
         }
     }
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
-    }
 }

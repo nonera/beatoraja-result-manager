@@ -6,6 +6,8 @@ import java.util.Objects;
 
 public class ScreenshotEntry {
 
+    private static final java.util.Set<String> NON_RESULT_STATES = java.util.Set.of("Play", "Music Select", "Decide", "Config");
+
     private final Path filePath;
     private final String fileName;
     private final LocalDateTime capturedAt;
@@ -86,6 +88,15 @@ public class ScreenshotEntry {
 
     public boolean isResultScreenshot() {
         return "Result".equals(stateLabel);
+    }
+
+    /**
+     * Whether a play result can be looked up for this screenshot: false for screens known to come
+     * before or outside a play (select, decide, play, config); true for results, course results
+     * and screens that could not be told apart.
+     */
+    public boolean mayShowPlayResult() {
+        return !NON_RESULT_STATES.contains(stateLabel);
     }
 
     @Override
