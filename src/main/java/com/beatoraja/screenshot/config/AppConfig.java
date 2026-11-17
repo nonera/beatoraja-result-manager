@@ -404,6 +404,11 @@ public class AppConfig {
             this.url = url;
         }
 
+        /** An independent copy, so edits to it do not reach the original. */
+        public DiscordWebhookEntry copy() {
+            return new DiscordWebhookEntry(name, url);
+        }
+
         public String getName() {
             return name;
         }

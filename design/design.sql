@@ -80,6 +80,11 @@ CREATE TABLE IF NOT EXISTS "BadgeCellRenderer"(
   behavior TEXT NOT NULL,
   "利用_Badge" TEXT REFERENCES "Badge"(method),
   "利用_UiTheme" TEXT REFERENCES "UiTheme"(method));
+CREATE TABLE IF NOT EXISTS "BatchPoster"(
+  method TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
+  behavior TEXT NOT NULL,
+  "利用_ScreenshotEntry" TEXT REFERENCES "ScreenshotEntry"(method));
 CREATE TABLE IF NOT EXISTS "BeatorajaPaths"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
@@ -157,14 +162,20 @@ CREATE TABLE IF NOT EXISTS "ChromiumProfileLock"(
   signature TEXT NOT NULL,
   behavior TEXT NOT NULL,
   "利用_AppLogging" TEXT REFERENCES "AppLogging"(method));
+CREATE TABLE IF NOT EXISTS "ClearLamp"(
+  method TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
+  behavior TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS "ClearLampLabels"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
-  behavior TEXT NOT NULL);
+  behavior TEXT NOT NULL,
+  "利用_ClearLamp" TEXT REFERENCES "ClearLamp"(method));
 CREATE TABLE IF NOT EXISTS "ClearTypeMapper"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
-  behavior TEXT NOT NULL);
+  behavior TEXT NOT NULL,
+  "利用_ClearLamp" TEXT REFERENCES "ClearLamp"(method));
 CREATE TABLE IF NOT EXISTS "ClixAuthSupport"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
@@ -230,7 +241,7 @@ CREATE TABLE IF NOT EXISTS "FilenameParser"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
   behavior TEXT NOT NULL,
-  "利用_ClearTypeMapper" TEXT REFERENCES "ClearTypeMapper"(method),
+  "利用_ClearLamp" TEXT REFERENCES "ClearLamp"(method),
   "利用_PlayerKind" TEXT REFERENCES "PlayerKind"(method),
   "生成_ScreenshotEntry" TEXT REFERENCES "ScreenshotEntry"(method));
 CREATE TABLE IF NOT EXISTS "FirstRunWizard"(
@@ -284,6 +295,7 @@ CREATE TABLE IF NOT EXISTS "MainFrame"(
   "利用_AppIcons" TEXT REFERENCES "AppIcons"(method),
   "利用_AppLogging" TEXT REFERENCES "AppLogging"(method),
   "利用_AppVersion" TEXT REFERENCES "AppVersion"(method),
+  "利用_BatchPoster" TEXT REFERENCES "BatchPoster"(method),
   "生成_ChartResolverService" TEXT REFERENCES "ChartResolverService"(method),
   "生成_ClixService" TEXT REFERENCES "ClixService"(method),
   "生成_DatabasePanel" TEXT REFERENCES "DatabasePanel"(method),
@@ -292,9 +304,10 @@ CREATE TABLE IF NOT EXISTS "MainFrame"(
   "生成_DiscordWebhookService" TEXT REFERENCES "DiscordWebhookService"(method),
   "利用_HelpDialog" TEXT REFERENCES "HelpDialog"(method),
   "生成_LampGroupedTweetText" TEXT REFERENCES "LampGroupedTweetText"(method),
-  "利用_PlayScore" TEXT REFERENCES "PlayScore"(method),
   "利用_PlayerKind" TEXT REFERENCES "PlayerKind"(method),
   "利用_PostBatchSplitter" TEXT REFERENCES "PostBatchSplitter"(method),
+  "利用_PostConfirmDialog" TEXT REFERENCES "PostConfirmDialog"(method),
+  "生成_PostTextComposer" TEXT REFERENCES "PostTextComposer"(method),
   "利用_PostTextFormat" TEXT REFERENCES "PostTextFormat"(method),
   "生成_PostTextFormatDialog" TEXT REFERENCES "PostTextFormatDialog"(method),
   "利用_PostedStateStore" TEXT REFERENCES "PostedStateStore"(method),
@@ -309,8 +322,6 @@ CREATE TABLE IF NOT EXISTS "MainFrame"(
   "利用_TableLookupService" TEXT REFERENCES "TableLookupService"(method),
   "生成_TableNotationRulesDialog" TEXT REFERENCES "TableNotationRulesDialog"(method),
   "生成_TablePriorityDialog" TEXT REFERENCES "TablePriorityDialog"(method),
-  "利用_TweetTextGenerator" TEXT REFERENCES "TweetTextGenerator"(method),
-  "利用_TweetTextLimits" TEXT REFERENCES "TweetTextLimits"(method),
   "生成_TwitterAuthService" TEXT REFERENCES "TwitterAuthService"(method),
   "生成_TwitterLoginDialog" TEXT REFERENCES "TwitterLoginDialog"(method),
   "利用_UiTheme" TEXT REFERENCES "UiTheme"(method));
@@ -347,6 +358,22 @@ CREATE TABLE IF NOT EXISTS "PostBatchSplitter"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
   behavior TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS "PostConfirmDialog"(
+  method TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
+  behavior TEXT NOT NULL,
+  "利用_TweetTextLimits" TEXT REFERENCES "TweetTextLimits"(method),
+  "利用_UiTheme" TEXT REFERENCES "UiTheme"(method));
+CREATE TABLE IF NOT EXISTS "PostTextComposer"(
+  method TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
+  behavior TEXT NOT NULL,
+  "利用_AppConfig" TEXT REFERENCES "AppConfig"(method),
+  "生成_LampGroupedTweetText" TEXT REFERENCES "LampGroupedTweetText"(method),
+  "利用_PlayScore" TEXT REFERENCES "PlayScore"(method),
+  "利用_ScreenshotEntry" TEXT REFERENCES "ScreenshotEntry"(method),
+  "利用_TweetTextGenerator" TEXT REFERENCES "TweetTextGenerator"(method),
+  "利用_TweetTextLimits" TEXT REFERENCES "TweetTextLimits"(method));
 CREATE TABLE IF NOT EXISTS "PostTextFormat"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
@@ -371,6 +398,7 @@ CREATE TABLE IF NOT EXISTS "PreviewPanel"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
   behavior TEXT NOT NULL,
+  "利用_AppLogging" TEXT REFERENCES "AppLogging"(method),
   "利用_Badge" TEXT REFERENCES "Badge"(method),
   "生成_CardPanel" TEXT REFERENCES "CardPanel"(method),
   "利用_ClearLampLabels" TEXT REFERENCES "ClearLampLabels"(method),
@@ -386,6 +414,7 @@ CREATE TABLE IF NOT EXISTS "ResultPalette"(
   method TEXT PRIMARY KEY,
   signature TEXT NOT NULL,
   behavior TEXT NOT NULL,
+  "利用_ClearLamp" TEXT REFERENCES "ClearLamp"(method),
   "利用_UiTheme" TEXT REFERENCES "UiTheme"(method));
 CREATE TABLE IF NOT EXISTS "ScreenshotDatabase"(
   method TEXT PRIMARY KEY,
@@ -589,6 +618,7 @@ CREATE VIEW IF NOT EXISTS v_method AS
   UNION ALL SELECT 'AppVersion' AS class, method, signature, behavior FROM "AppVersion"
   UNION ALL SELECT 'Badge' AS class, method, signature, behavior FROM "Badge"
   UNION ALL SELECT 'BadgeCellRenderer' AS class, method, signature, behavior FROM "BadgeCellRenderer"
+  UNION ALL SELECT 'BatchPoster' AS class, method, signature, behavior FROM "BatchPoster"
   UNION ALL SELECT 'BeatorajaPaths' AS class, method, signature, behavior FROM "BeatorajaPaths"
   UNION ALL SELECT 'BmtTableReader' AS class, method, signature, behavior FROM "BmtTableReader"
   UNION ALL SELECT 'BmzPaths' AS class, method, signature, behavior FROM "BmzPaths"
@@ -601,6 +631,7 @@ CREATE VIEW IF NOT EXISTS v_method AS
   UNION ALL SELECT 'ChromiumCdpSession' AS class, method, signature, behavior FROM "ChromiumCdpSession"
   UNION ALL SELECT 'ChromiumDevToolsClient' AS class, method, signature, behavior FROM "ChromiumDevToolsClient"
   UNION ALL SELECT 'ChromiumProfileLock' AS class, method, signature, behavior FROM "ChromiumProfileLock"
+  UNION ALL SELECT 'ClearLamp' AS class, method, signature, behavior FROM "ClearLamp"
   UNION ALL SELECT 'ClearLampLabels' AS class, method, signature, behavior FROM "ClearLampLabels"
   UNION ALL SELECT 'ClearTypeMapper' AS class, method, signature, behavior FROM "ClearTypeMapper"
   UNION ALL SELECT 'ClixAuthSupport' AS class, method, signature, behavior FROM "ClixAuthSupport"
@@ -624,6 +655,8 @@ CREATE VIEW IF NOT EXISTS v_method AS
   UNION ALL SELECT 'PlayerKind' AS class, method, signature, behavior FROM "PlayerKind"
   UNION ALL SELECT 'PlayerPlayLogService' AS class, method, signature, behavior FROM "PlayerPlayLogService"
   UNION ALL SELECT 'PostBatchSplitter' AS class, method, signature, behavior FROM "PostBatchSplitter"
+  UNION ALL SELECT 'PostConfirmDialog' AS class, method, signature, behavior FROM "PostConfirmDialog"
+  UNION ALL SELECT 'PostTextComposer' AS class, method, signature, behavior FROM "PostTextComposer"
   UNION ALL SELECT 'PostTextFormat' AS class, method, signature, behavior FROM "PostTextFormat"
   UNION ALL SELECT 'PostTextFormatDialog' AS class, method, signature, behavior FROM "PostTextFormatDialog"
   UNION ALL SELECT 'PostedStateStore' AS class, method, signature, behavior FROM "PostedStateStore"
@@ -684,6 +717,7 @@ INSERT INTO "_class"("name","module","layer","kind","responsibility","status") V
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('AppVersion','src/main/java/com/beatoraja/screenshot/util/AppVersion.java','util','通常','アプリの版番号を返す。JAR のマニフェストに書かれた実装版を読み、無ければ開発中を表す dev とする。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('Badge','src/main/java/com/beatoraja/screenshot/ui/theme/Badge.java','ui.theme','通常','ランプ・ランク・画面種別などを角丸の「ピル」として描く共通部品。指定色を背景色に薄く混ぜた塗りと枠を描き、背景の明るさに合わせて読みやすい文字色に補正する。表のセル描画用の静的な描画関数と、通常のレイアウトに置けるラベル部品の両方を提供する。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('BadgeCellRenderer','src/main/java/com/beatoraja/screenshot/ui/render/BadgeCellRenderer.java','ui.render','通常','表のセル値をピル1個として描くセル描画部品。クリアランプ・ランク・難易度表記号の列で使い、色はセルの生の値から、表示文字は別の変換関数（ユーザー設定の表示名など）から決める。値が空か「-」ならピルの代わりに薄い「-」を描く。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('BatchPoster','src/main/java/com/beatoraja/screenshot/service/BatchPoster.java','service','通常','スクショの組(バッチ)を順に1件ずつ送り、失敗した時点で止める。送信そのものは渡された関数 Sender(投稿1回を送り、成功なら null、失敗ならエラー内容を返す)に任せ、X と Discord の手動投稿で同じ手順を使う。送れた分のスクショと失敗の内容を返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('BeatorajaPaths','src/main/java/com/beatoraja/screenshot/player/BeatorajaPaths.java','player','通常','beatorajaのフォルダにある config_sys.json を読み、プレイヤーフォルダ・プレイログDB(scoredatalog.db / scorelog.db)・楽曲DB(songdata.db)・難易度表フォルダの場所を割り出して保持する。設定にある相対パスはbeatorajaフォルダ基準で絶対パスにする。設定画面向けに、プレイヤーフォルダ配下のプレイヤー名一覧も返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('BmtTableReader','src/main/java/com/beatoraja/screenshot/table/BmtTableReader.java','table','通常','beatorajaが難易度表フォルダに保存する .bmt ファイル(gzip圧縮のJSON)を読み、表名・タグ・レベルごとのフォルダ・曲(タイトル・md5・sha256)の形に変換する。フォルダ内の全 .bmt をまとめて読み、読めなかったファイル名も一緒に返す。ここで定義する表データの形は、BMZ Player の表を読むときにも共通で使われる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('BmzPaths','src/main/java/com/beatoraja/screenshot/player/BmzPaths.java','player','通常','BMZ Player のデータフォルダ(config.toml があるフォルダ)を見つけ、config.toml から使用中のプロフィールとスクショ保存先を読んで、プロフィールの score.db・library.db・スクショフォルダの場所を割り出して保持する。exeのあるフォルダが選ばれた場合は、その下の data フォルダもデータフォルダとして探す。設定画面向けにプロフィールID一覧も返す。','実装済み');
@@ -696,22 +730,23 @@ INSERT INTO "_class"("name","module","layer","kind","responsibility","status") V
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ChromiumCdpSession','src/main/java/com/beatoraja/screenshot/service/twitter/ChromiumCdpSession.java','service.twitter','アダプタ','ブラウザの1つのタブと Chromium DevTools Protocol の WebSocket でつながり、命令を送って応答を受け取る。送った命令ごとに番号を振って応答待ちの表に入れ、届いた応答を番号で突き合わせて返す。エラー応答や時間切れは例外にする。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ChromiumDevToolsClient','src/main/java/com/beatoraja/screenshot/service/twitter/ChromiumDevToolsClient.java','service.twitter','アダプタ','デバッグポートを開いて起動したブラウザに HTTP と CDP で話しかける窓口。プロファイルに書かれた DevToolsActivePort からポート番号を得て接続可能になるまで待ち、タブを探すか新しく開いて CDP セッションをつなぐ。x.com・twitter.com の Cookie を読み出して TwitterCookies にまとめる機能も持つ。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ChromiumProfileLock','src/main/java/com/beatoraja/screenshot/service/twitter/ChromiumProfileLock.java','service.twitter','アダプタ','X ログイン用のブラウザプロファイルを短時間だけ使うブラウザ起動のために、プロファイルのロックを扱う補助。前回の起動が残したデバッグポート情報のファイルを消し、SingletonLock と lockfile が消えて前のブラウザが手放すまで最大25秒待つ。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClearLampLabels','src/main/java/com/beatoraja/screenshot/config/ClearLampLabels.java','config','通常','クリアランプの表示名(俗称)と、ランプ別にまとめた投稿文で使う短い名前・表示有無の既定値を持ち、ユーザーの上書き設定を反映して解決する。上書きはランプ名を前後空白除去・大文字化したものをキーにする。表示名を変えるだけで、色分けやクリアIDの判定には元のランプ名を使う前提。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClearTypeMapper','src/main/java/com/beatoraja/screenshot/player/ClearTypeMapper.java','player','通常','クリアランプの名前と数値ID(beatorajaの番号付け: 0=NO PLAY 〜 10=MAX)を相互に変換する。beatorajaのスクショ名に入るランプ名、BMZ Player の clear_type ラベル(Hard、FullCombo など)のどちらからでもIDを求められる。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClearLamp','src/main/java/com/beatoraja/screenshot/model/ClearLamp.java','model','通常','クリアランプ11種(NO PLAY〜MAX)の列挙。ランプごとの事実をここ1か所に持つ: beatoraja のクリアID(並び順そのもの)とスクショ名に書かれる名前、BMZ Player のラベル、ランプ別まとめ投稿の既定の短い名前と既定で載せるか、バッジの色。名前・ID・BMZラベルからの引き当てと、文字列に含まれるランプ名の検出(長い名前を先に試す)を提供する。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClearLampLabels','src/main/java/com/beatoraja/screenshot/config/ClearLampLabels.java','config','通常','クリアランプの表示名(俗称)と、ランプ別にまとめた投稿文で使う短い名前・載せるかどうかについて、ClearLamp の既定値に利用者の上書き設定を重ねて解決する。上書きはランプ名を前後空白除去・大文字化したものをキーにする。表示名を変えるだけで、色分けやクリアIDの判定には元のランプ名を使う前提。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClearTypeMapper','src/main/java/com/beatoraja/screenshot/player/ClearTypeMapper.java','player','通常','クリアランプの名前と数値ID(beatorajaの番号付け: 0=NO PLAY 〜 10=MAX)を相互に変換する窓口。beatorajaのスクショ名に入るランプ名、BMZ Player の clear_type ラベル(Hard、FullCombo など)のどちらからでもIDを求められる。対応表そのものは ClearLamp にある。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClixAuthSupport','src/main/java/com/beatoraja/screenshot/service/twitter/ClixAuthSupport.java','service.twitter','アダプタ','clix CLI に X の Cookie を渡すための準備をする。アプリ専用の clix ホームの下に clix 用の auth.json を書き出し、子プロセスの USERPROFILE をそこへ向けることで、利用者自身の clix 設定に触れずに認証情報を使わせる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClixLocator','src/main/java/com/beatoraja/screenshot/util/ClixLocator.java','util','通常','clix CLI の実行ファイルを探す。同梱の tools\clix.exe、作業フォルダや開発中のプロジェクト直下の tools、Python のインストール先の Scripts を順に調べ、無ければ Windows の where コマンドで PATH 上を探す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ClixService','src/main/java/com/beatoraja/screenshot/service/ClixService.java','service','アダプタ','X(Twitter) とのやりとりの入口。ログイン状態の確認は同梱の clix コマンドを別プロセスで動かしてその JSON 出力を読み、投稿はブラウザで X の投稿画面を開くクラスに任せる。clix が見つからない・認証切れ・レート制限などの失敗を利用者向けの日本語メッセージに直す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('DatabasePanel','src/main/java/com/beatoraja/screenshot/ui/DatabasePanel.java','ui','通常','メイン画面左側の、取り込み済みスクショ一覧の表。DB の全レコードをサムネイル・撮影日時・フラグ・曲名・記号・レベル・ランク・ランプ・投稿表記・状態（リザルト種別と X / Discord 投稿済みか）の列で表示し、記号・曲名・フラグのみで絞り込み、複数列で並べ替えできる。フラグ・記号・投稿表記のセルはその場で編集でき、編集結果はすぐ DB に保存して一覧を読み直す。右クリックメニューから選択行の画像ファイルと DB 行をまとめて削除できる。選択が変わるたびに選択中のスクショを ScreenshotEntry に変換してメイン画面へ知らせる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('DifficultyTableRegistry','src/main/java/com/beatoraja/screenshot/table/DifficultyTableRegistry.java','table','通常','読み込んだ難易度表を索引化し、曲のタイトルまたはハッシュ(sha256/md5)から難易度表記(例: sl12)を引けるようにする。複数の表に載っている曲は、設定された表の優先順で並べて第一候補を決め、表ごとの記号置き換えルールや「常に併記」設定を反映した投稿用表記と候補一覧を返す。表の一覧・タグ・記号など、設定画面で使う情報も提供する。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('DiscordAutoPostQueue','src/main/java/com/beatoraja/screenshot/service/DiscordAutoPostQueue.java','service','通常','フォルダ監視で見つかった Discord 未投稿のリザルト画面スクショを、設定枚数たまるまで溜めておく待ち行列。リザルト以外・投稿済み・すでに並んでいるものは入れず、先頭からまとめて取り出したり、送れなかった分を先頭に戻したり、手動で送った分を取り除いたりできる。操作はすべて同期化してあり、別スレッドから呼んでも壊れない。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('DiscordWebhookService','src/main/java/com/beatoraja/screenshot/service/DiscordWebhookService.java','service','アダプタ','Discord の Webhook URL に本文と画像を multipart 形式で HTTP 送信する。最大10枚までの PNG を1件のメッセージにまとめ、応答からメッセージ ID を取り出して成否と一緒に返す。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('DiscordWebhookService','src/main/java/com/beatoraja/screenshot/service/DiscordWebhookService.java','service','アダプタ','Discord の Webhook URL に本文と画像を multipart 形式で HTTP 送信する。1件のメッセージに載せられる画像の上限(MAX_IMAGES_PER_POST = 10)を持ち、画像の種類は拡張子から決める。応答からメッセージ ID を取り出して成否と一緒に返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('FilenameParser','src/main/java/com/beatoraja/screenshot/parser/FilenameParser.java','parser','通常','スクショのファイル名から撮影時刻・画面種別(リザルト・プレイ・選曲など)・曲名・難易度表フォルダ名・レベル・ランプ・DJ RANKを読み取り、ScreenshotEntry を作る。beatoraja形式(yyyyMMdd_HHmmss_…)と BMZ Player 形式(yyyyMMdd_HHmmss_SSS_<本文>.png)の2通りを、指定されたプレイヤー種別で切り替えて解析する。形式に合わないファイルは画面種別を空にし、ファイル名を曲名として返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('FirstRunWizard','src/main/java/com/beatoraja/screenshot/ui/FirstRunWizard.java','ui','通常','初回起動時に表示する初期設定画面。beatoraja / BMZ Player のフォルダ、任意のDiscord Webhook（名前とURL）を入力させ、任意でTwitterログインも行える。保存時にフォルダからプレイヤー種別を判定してスクショフォルダを決め、設定を保存して完了通知を呼ぶ。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('GitHubReleaseClient','src/main/java/com/beatoraja/screenshot/service/update/GitHubReleaseClient.java','service.update','アダプタ','GitHub の Releases API からこのアプリの最新リリースを取得する。タグ名と配布用 zip のダウンロード URL を取り出し、タグ名を比較用のバージョン文字列に整えて返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('HelpDialog','src/main/java/com/beatoraja/screenshot/ui/HelpDialog.java','ui','通常','ヘルプメニューから呼ばれる表示・操作をまとめた静的クラス。使い方の説明、バージョン情報ダイアログの表示、ログフォルダをエクスプローラーで開く処理、GitHubリポジトリをブラウザで開く処理を持つ。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('LampGroupedTweetText','src/main/java/com/beatoraja/screenshot/service/LampGroupedTweetText.java','service','通常','画像が多くて1枚1行の投稿文が文字数に収まらないときに使う、クリアランプ別の投稿文を作る。ランプの良い順に1行ずつ、そのランプの譜面の表記を投稿順に並べる。表示しないランプの譜面は省き、表記がない譜面はタイトルを短く切って代わりに載せる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('Main','src/main/java/com/beatoraja/screenshot/Main.java','app','通常','アプリの起動口。ログ初期化と未捕捉例外の記録を設定し、設定ファイルを読んで画面テーマを適用する。自動更新が有効なら進捗画面を出して更新を試し、更新のため再起動する場合はここで終了する。そうでなければ初回設定が済んでいるかに応じて初期設定ウィザードかメイン画面を開く。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('MainFrame','src/main/java/com/beatoraja/screenshot/ui/MainFrame.java','ui','通常','アプリのメインウィンドウで、画面の組み立てと全体の流れの取りまとめを一手に担う。起動時に DB と難易度表・プレイ記録を読み込み、スクショフォルダを走査して裏で曲情報を照合し DB に同期し、その後はフォルダを監視して新しいスクショを1枚ずつ DB に登録する。左の一覧で選んだスクショを右のプレビューに投稿順で並べ、投稿文を自動生成し、確認・編集ダイアログを経て X（ブラウザ経由、20枚ずつ分割。多い場合は投稿文をランプ別まとめ形式にし、文字数超過時は曲名を自動短縮）や Discord（10枚ずつ分割）に別スレッドで投稿し、投稿済み状態を保存する。新しいリザルトのスクショが設定枚数たまると Discord へ自動投稿もする。メニューから設定・難易度表の優先順位・表記ルール・投稿文書式の各ダイアログを開いて設定を保存し、終了時には設定に応じてスクショフォルダの PNG を消す。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('MainFrame','src/main/java/com/beatoraja/screenshot/ui/MainFrame.java','ui','通常','アプリのメインウィンドウ。画面を組み立て、全体の流れを取りまとめる。起動時に DB と難易度表・プレイ記録を読み込み、スクショフォルダを走査して裏で曲情報を照合し DB に同期し、その後はフォルダを監視して新しいスクショを1枚ずつ DB に登録する。左の一覧で選んだスクショを右のプレビューに投稿順で並べる。投稿ボタンでは、投稿文を PostTextComposer で作り、PostConfirmDialog で確認・編集させ、X(20枚ずつ)・Discord(10枚ずつ)の共通の手順 runManualPost で別スレッドから BatchPoster で送り、送れた分を投稿済みとして保存する。新しいリザルトのスクショが設定枚数たまると Discord へ自動投稿もする。メニューから設定・難易度表の優先順位・表記ルール・投稿文書式の各ダイアログを開いて設定を保存し、終了時には設定に応じてスクショフォルダの PNG を消す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('MultiColumnSortSupport','src/main/java/com/beatoraja/screenshot/ui/MultiColumnSortSupport.java','ui','通常','表で複数列を組み合わせた並べ替えを行うための補助クラス。列見出しをクリックするたびにその列を「降順で追加→昇順→解除」と切り替え、クリック順を優先順位として並べ替えキーを設定する。見出しには▼/▲と優先順位の番号を表示し、条件が空になったら既定列の降順に戻す。データベース画面の表で使われる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('NotationPrefixResolver','src/main/java/com/beatoraja/screenshot/table/NotationPrefixResolver.java','table','通常','同じ表・同じ記号に属する難易度表記の並び(例: sl1〜sl12)から、置き換えてよい共通の先頭部分(記号部分)を求める。表記の記号を差し替える設定のとき、小数を含むレベル部分を残して先頭だけを置き換えるために使う。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PlayLogSource','src/main/java/com/beatoraja/screenshot/player/PlayLogSource.java','player','基底','プレイヤーのプレイ履歴から、スクショが撮られたプレイを探すための共通の窓口。beatoraja用(PlayerPlayLogService)と BMZ Player 用(BmzPlayLogService)がこれを実装し、呼び出し側はプレイヤーの違いを意識せずに撮影時刻とランプで検索できる。','実装済み');
@@ -719,10 +754,12 @@ INSERT INTO "_class"("name","module","layer","kind","responsibility","status") V
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PlayerKind','src/main/java/com/beatoraja/screenshot/player/PlayerKind.java','player','通常','アプリが対象とするプレイヤー(beatoraja / BMZ Player / 不明)を表す列挙型。設定ファイルに保存するキーと画面表示名を持ち、保存値からの復元と、フォルダの中身(config_sys.json か config.toml か)からの自動判定を行う。自動判定は、プレイヤー設定がなかった古い設定ファイルの補完に使う。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PlayerPlayLogService','src/main/java/com/beatoraja/screenshot/player/PlayerPlayLogService.java','player','通常','beatorajaのプレイヤーフォルダにある scoredatalog.db を読み込み、プレイ履歴(sha256・クリアID・日時・判定数)をメモリ上に時刻順で持つ。撮影時刻の3分前から30秒後までのプレイを候補として、ランプが一致するものを優先し、撮影時刻に近い順に返す。プレイ履歴1件を表す PlayLogEntry もここで定義している。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostBatchSplitter','src/main/java/com/beatoraja/screenshot/service/PostBatchSplitter.java','service','通常','投稿する画像の一覧を、1回の投稿に載せられる枚数ごとの束に分ける小さな道具。順番は保ったまま、最後の束だけ端数になる。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostConfirmDialog','src/main/java/com/beatoraja/screenshot/ui/PostConfirmDialog.java','ui','通常','投稿直前の確認ダイアログ。投稿1回ごとの本文を編集できる形で並べ、利用者が確定した本文を返す(キャンセルなら null)。X 用は文字数のカウンタを出し、全件が280以内に収まるまで確定させない(入力内容は保ったまま出し直す)。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostTextComposer','src/main/java/com/beatoraja/screenshot/service/PostTextComposer.java','service','通常','利用者の投稿文書式・ランプ表示名の設定から投稿文を組み立てる。スクショ1枚ごとの1行を作り、投稿1回分につなぐ。X 用には文字数制限に収まるよう、8枚以上ならランプ別まとめ形式にし、それ未満で超える場合は曲名を長いものから短くする。投稿表記とスコアは呼び出し側から渡された関数で引く(画面や DB を知らない)。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostTextFormat','src/main/java/com/beatoraja/screenshot/config/PostTextFormat.java','config','通常','自動生成する投稿文に、どの項目(難易度表記・曲名・ランプ・DJ RANK・BP・スコアレート・EXスコア・境目との差)をどの順で、どんな前後の文字を付けて入れるかと、DJ RANKの表示名を持つ。AppConfig の一部として保存される。古い設定で欠けている項目を補い、不明・重複した項目を取り除く正規化も行う。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostTextFormatDialog','src/main/java/com/beatoraja/screenshot/ui/PostTextFormatDialog.java','ui','通常','自動生成する投稿文の書式を編集するダイアログ。投稿文に含める項目の有無・並び順・前後に付ける文字と、DJランクごとの表示名を設定できる。固定のサンプル曲とサンプルのスコアで投稿文を生成し、編集のたびにプレビューを更新する。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PostedStateStore','src/main/java/com/beatoraja/screenshot/service/PostedStateStore.java','service','通常','どのスクショを X と Discord に投稿済みかを、ファイル名ごとに投稿日時と投稿 ID で覚えておく。アプリのデータフォルダの posted.json から読み込み、同じファイルへ書き戻す。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PreviewPanel','src/main/java/com/beatoraja/screenshot/ui/PreviewPanel.java','ui','通常','選択中のスクショを表示するメイン画面右側の欄。上部のヘッダーに曲名・撮影日時・記号・レベル・ランク・ランプのピルを出し、その下に画像と投稿文の先頭部分を並べた閲覧専用のプレビュー一覧を置く。最下部の1行ずつの投稿順リストで、ドラッグや↑↓ボタンによる並び替え操作を受け付けて呼び出し側へ通知する。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('PreviewPanel','src/main/java/com/beatoraja/screenshot/ui/PreviewPanel.java','ui','通常','選択中のスクショを表示するメイン画面右側の欄。上部のヘッダーに曲名・撮影日時・記号・レベル・ランク・ランプのピルを出し、その下に画像と投稿文の先頭部分を並べた閲覧専用のプレビュー一覧を置く。プレビュー画像は裏スレッドで読み込んで縮小し、最近の64枚をキャッシュする。最下部の1行ずつの投稿順リストで、ドラッグや↑↓ボタンによる並び替え操作を受け付けて呼び出し側へ通知する。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ProcessUtils','src/main/java/com/beatoraja/screenshot/util/ProcessUtils.java','util','アダプタ','外部プロセスを子プロセスごと確実に終わらせる補助。Windows では taskkill でプロセスツリーを強制終了し、それ以外では強制終了を使う。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ResultPalette','src/main/java/com/beatoraja/screenshot/ui/theme/ResultPalette.java','ui.theme','通常','クリアランプ・DJランク・画面種別・難易度表記号に割り当てる色の表を持つ。色はダークテーマ向けに決めてあり、ライトテーマでは明るすぎる色を読める明るさまで暗くして返す。色を背景色に混ぜる計算も提供する。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotDatabase','src/main/java/com/beatoraja/screenshot/db/ScreenshotDatabase.java','db','通常','アプリデータフォルダの screenshots.db(SQLite)に、解析・照合済みのスクショ情報(撮影時刻・曲名・ハッシュ・難易度表記・ランプ・ランク・投稿用表記・フラグなど)を保存する。起動時に表を作成し、古いDBには足りない列を追加する。登録・一括同期(消えたファイルの行の削除を含む)・表記の手動変更・フラグ更新・検索・削除を行い、手で直した表記は再同期で上書きしない。','実装済み');
@@ -731,7 +768,7 @@ INSERT INTO "_class"("name","module","layer","kind","responsibility","status") V
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotListPanel','src/main/java/com/beatoraja/screenshot/ui/ScreenshotListPanel.java','ui','通常','スクショをサムネイル付きのリストで表示し、複数選択を受け付けるパネル。各行にファイル名と、投稿済み記録があれば[Twitter][Discord]の印を出す。現在はどこからも使われておらず、表形式のデータベース画面に置き換えられた旧部品である。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotRecord','src/main/java/com/beatoraja/screenshot/db/ScreenshotRecord.java','db','通常','screenshots.db の1行を表すレコード。ID・パス・撮影時刻・曲名・ハッシュ・難易度表の記号とレベル・ランプ・ランク・投稿用表記・候補表記・手動編集済みか・プレイデータから特定したか・フラグを持ち、一覧画面に表示するレベル文字列を返す。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotScanner','src/main/java/com/beatoraja/screenshot/service/ScreenshotScanner.java','service','通常','スクショフォルダ内の PNG を一覧にする。各ファイル名をプレイヤー(beatoraja / BMZ Player)の命名規則で解析してスクショ情報にし、撮影時刻の新しい順に並べて返す。','実装済み');
-INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotWatcher','src/main/java/com/beatoraja/screenshot/service/ScreenshotWatcher.java','service','アダプタ','スクショフォルダを OS のファイル監視で見張り、新しい PNG ができたら通知する。専用の裏スレッドで監視を回し、書き込みが終わるのを少し待ってからファイル名を解析し、呼び出し側の通知先に渡す。','実装済み');
+INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('ScreenshotWatcher','src/main/java/com/beatoraja/screenshot/service/ScreenshotWatcher.java','service','アダプタ','スクショフォルダを OS のファイル監視で見張り、新しい PNG ができたら通知する。専用の裏スレッドで監視を回し、書き込みが終わるのを少し待ってからファイル名を解析し、呼び出し側の通知先に渡す。一時的な読み取り失敗や通知先の例外では止まらず監視を続ける。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('SettingsDialog','src/main/java/com/beatoraja/screenshot/ui/SettingsDialog.java','ui','通常','アプリ全体の設定を編集するモーダルダイアログ。使用プレイヤー（beatoraja / BMZ Player）、スクショフォルダ、プレイヤーのフォルダとプレイヤー名、X のログイン状態とログイン・ログアウト、Discord Webhook 一覧、クリアランプの表示名・略称・まとめ投稿に載せるか、Discord 自動投稿、起動時の自動更新、終了時のスクショ削除、テーマ・フォント・文字サイズを1画面にまとめて表示する。保存ボタンでスクショフォルダの存在を確かめてから全項目を AppConfig に書き込んでファイルに保存し、呼び出し元に保存を知らせて閉じる。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('SongDatabaseService','src/main/java/com/beatoraja/screenshot/player/SongDatabaseService.java','player','通常','プレイヤーの楽曲DB(beatorajaの songdata.db、または BMZ Player の library.db)を読み込み、sha256 をキーにして md5・タイトル・サブタイトル付きの表示タイトル・レベルを引けるようにする。同じ sha256 が複数あるときは最初の行を使う。ファイルがない場合は利用不可として何も返さない。','実装済み');
 INSERT INTO "_class"("name","module","layer","kind","responsibility","status") VALUES('StateCell','src/main/java/com/beatoraja/screenshot/ui/render/StateCell.java','ui.render','通常','表の「状態」列に入れる値で、画面種別の文字とX・Discordへの投稿済みフラグを1つにまとめたもの。表示用文字列と、その文字列による並べ替え順を提供する。','実装済み');
@@ -774,6 +811,7 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Badge
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Badge','UiTheme','利用','ラベル部品に親がないとき、背景色としてテーマの面色を使うため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BadgeCellRenderer','Badge','利用','セル内にピルを描き、その幅を測って配置を決めるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BadgeCellRenderer','UiTheme','利用','値が空のときの「-」を控えめな色で描くため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BatchPoster','ScreenshotEntry','利用','バッチのスクショから画像のパスを取り、送れた分として返すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BeatorajaPaths','AppLogging','利用','config_sys.json やプレイヤーフォルダ一覧の読み込み失敗をログに出すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BmzPaths','AppLogging','利用','プロフィール一覧の読み込み失敗をログに出すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('BmzPlayLogService','ClearTypeMapper','利用','score.db の clear_type ラベルをクリアIDに直すため。');
@@ -803,6 +841,8 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Chrom
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ChromiumDevToolsClient','ChromiumCdpSession','利用','見つけたタブへ CDP でつなぎ、命令を送るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ChromiumDevToolsClient','TwitterCookies','生成','ブラウザから読み出した x.com の Cookie を TwitterCookies にまとめて返すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ChromiumProfileLock','AppLogging','利用','デバッグ用ファイルを消せなかったときに記録を残すため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ClearLampLabels','ClearLamp','利用','ランプの一覧と既定の短い名前・載せるかどうかを取るため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ClearTypeMapper','ClearLamp','利用','ランプ名・クリアID・BMZ ラベルの対応表として使うため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ClixAuthSupport','AppConfig','利用','保存済みの X の Cookie を読み出して clix 用の認証ファイルに書くため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ClixAuthSupport','AppPaths','利用','clix 用の専用ホームフォルダの場所を得るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ClixLocator','AppLogging','利用','探索中のフォルダ走査や where の失敗を記録するため。');
@@ -836,7 +876,7 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Disco
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('DiscordAutoPostQueue','PostedStateStore','利用','Discord に投稿済みのスクショを行列に入れないよう確かめるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('DiscordAutoPostQueue','ScreenshotEntry','利用','並べる対象のスクショ情報で、リザルト画面かとファイル名を見るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('DiscordWebhookService','AppLogging','利用','Discord の応答が解析できないときをログに残すため。');
-INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('FilenameParser','ClearTypeMapper','利用','BMZ のランプラベルを beatoraja のランプ名に直すため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('FilenameParser','ClearLamp','利用','beatoraja 名からランプ名を見つけ、BMZ ラベルを beatoraja のランプ名に直すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('FilenameParser','PlayerKind','利用','どちらのプレイヤーの形式で解析するかを切り替えるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('FilenameParser','ScreenshotEntry','生成','解析結果をスクショ情報として作って返すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('FirstRunWizard','AppConfig','生成','入力内容をフォルダ・プレイヤー種別・Discord Webhookとして設定に書き込み保存するため（Webhook項目を新しく作る）。');
@@ -866,6 +906,7 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainF
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','AppIcons','利用','ウィンドウにアプリのアイコンを付けるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','AppLogging','利用','ログ出力と、Webhook URL やエラー文を伏せ字・無害化して記録するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','AppVersion','利用','タイトルとステータスバーにアプリのバージョンを表示するため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','BatchPoster','利用','X・Discord の手動投稿でバッチを順に送るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','ChartResolverService','生成','難易度表・プレイ記録を読み込み、スクショに曲情報・既定の投稿表記・スコアを付け、表の一覧や記号の順位を得るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','ClixService','生成','ブラウザを操作して X に画像付きで投稿し、1投稿あたりの画像上限を得るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','DatabasePanel','生成','画面左側にスクショ一覧を置き、選択・編集・投稿済み状態をやりとりするため。');
@@ -874,9 +915,10 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainF
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','DiscordWebhookService','生成','手動・自動の Discord 送信で Webhook に画像と文を送るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','HelpDialog','利用','ヘルプメニューから使い方・ログフォルダ・リポジトリ・バージョン情報を開くため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','LampGroupedTweetText','生成','枚数が多いツイートの投稿文をランプ別のまとめ形式で作るため。');
-INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PlayScore','利用','照合したプレイのスコアを投稿文の生成に渡すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PlayerKind','利用','BMZ Player のときだけ照合失敗したリザルトを少し待って再照合するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostBatchSplitter','利用','選んだスクショを1投稿あたりの上限枚数ごとに分けるため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostConfirmDialog','利用','投稿直前に本文を確認・編集させるため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostTextComposer','生成','プレビューと投稿の本文を作るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostTextFormat','利用','投稿文書式ダイアログの結果を受け取って設定に保存するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostTextFormatDialog','生成','設定メニューから投稿文の書式を編集させるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','PostedStateStore','利用','投稿済みの記録を読み書き・保存し、二重投稿を避けるため。');
@@ -891,8 +933,6 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainF
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TableLookupService','利用','曲情報を付けたスクショ（EnrichedScreenshot）の型として照合結果を受け取るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TableNotationRulesDialog','生成','設定メニューから難易度表ごとの投稿表記ルールを編集させるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TablePriorityDialog','生成','設定メニューから難易度表の優先順位を編集させるため。');
-INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TweetTextGenerator','利用','スクショ1枚ごとの投稿文を作り、文字数超過時は曲名を短くして作り直すため。');
-INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TweetTextLimits','利用','X の重み付き文字数を数え、上限を超えていないか確かめるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TwitterAuthService','生成','X 投稿の前にログイン情報が保存済みかを確かめるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','TwitterLoginDialog','生成','未ログイン時や認証エラー時に X へのログインを促すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('MainFrame','UiTheme','利用','ボタンや文字・枠線の色を得て、外観変更時にテーマとフォントを適用し直すため。');
@@ -901,6 +941,14 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PlayL
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PlayerKind','BmzPaths','利用','フォルダが BMZ Player のデータフォルダかどうかを判定するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PlayerPlayLogService','PlayLogSource','継承','プレイ履歴検索の共通窓口を beatoraja 用に実装するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PlayerPlayLogService','PlayScore','生成','scoredatalog の判定数からスコア情報を作るため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostConfirmDialog','TweetTextLimits','利用','X の文字数を数えてカウンタと上限の確認に使うため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostConfirmDialog','UiTheme','利用','文字数カウンタの通常時の色を取るため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','AppConfig','利用','投稿文の書式・ランプ表示名・短い名前・載せるランプの設定を読むため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','LampGroupedTweetText','生成','枚数が多いバッチをランプ別まとめ形式にするため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','PlayScore','利用','スコア付きの行を作るためにスコアを受け渡す。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','ScreenshotEntry','利用','曲名・ランプ・ファイル名を行に使うため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','TweetTextGenerator','利用','1枚分の行を書式どおりに作るため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextComposer','TweetTextLimits','利用','X の文字数を数えて上限と比べるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextFormat','PlayScore','利用','正規化の際に有効なDJ RANKの一覧を参照するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextFormatDialog','AppIcons','利用','ダイアログにアプリのアイコンを付けるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextFormatDialog','PlayScore','生成','プレビュー用のサンプルの判定数を作り、ランク表示名の欄をランク一覧から並べるため。');
@@ -909,6 +957,7 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostT
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostTextFormatDialog','TweetTextGenerator','利用','編集中の書式でサンプルの投稿文を生成してプレビューに出すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostedStateStore','AppLogging','利用','posted.json を読めなかったときにログに残すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PostedStateStore','AppPaths','利用','posted.json とデータフォルダの場所を知るため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','AppLogging','利用','プレビュー画像の読み込み失敗を記録するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','Badge','利用','ヘッダーのランク・ランプ等のピルと、各行の番号のピルを作り、ピルの高さで行の高さを決めるため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','CardPanel','生成','ヘッダー、プレビュー行、投稿順リストの行をカード状の面として作るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','ClearLampLabels','利用','ヘッダーのランプのピルにユーザー設定の表示名を使うため。');
@@ -916,6 +965,7 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Previ
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','ScreenshotEntry','利用','表示するスクショの曲名・撮影日時・ランク・ランプ・画像パスなどを読み出すため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('PreviewPanel','UiTheme','利用','控えめな文字色・アクセント色・基準の文字サイズを得るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ProcessUtils','AppLogging','利用','プロセスツリーの終了に失敗したときに警告を記録するため。');
+INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ResultPalette','ClearLamp','利用','ランプの色を取るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ResultPalette','UiTheme','利用','ダークかライトかを調べ、色の明るさを調整するため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ScreenshotDatabase','AppPaths','利用','screenshots.db を置くアプリデータフォルダの場所を得るため。');
 INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('ScreenshotDatabase','ScreenshotRecord','生成','読み出した行をレコードにして返すため。');
@@ -995,16 +1045,24 @@ INSERT INTO "_dependency"("from_class","to_class","kind","reason") VALUES('Updat
 
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('AppLogging','maskWebhookUrlHidesToken','maskWebhookUrl','https://discord.com/api/webhooks/1234567890/ に続く秘密文字列が **** に置き換わり、番号部分はそのまま残る。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('AppLogging','sanitizeMasksWebhookInMessage','sanitize','「Failed: 」に続けて Webhook URL を含むメッセージでも、1234567890/**** の形に秘密部分が伏せられる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('BatchPoster','sendsEveryBatchInOrder','postInOrder','2件のバッチが本文と画像枚数そのままに順に送られ、開始通知が 1、2 の順に来て、3枚とも送れた扱いになる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('BatchPoster','stopsAtTheFirstFailureKeepingWhatWentOut','postInOrder','3件中2件目が失敗すると3件目は送られず、失敗内容と1件目のスクショだけが送れた分として返る。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('BmzPaths','defaultsWhenConfigTomlIsMinimal','resolve','version だけの config.toml でプロフィール指定が null のとき、プロフィールは default、スクショ保存先はデータフォルダ下の screenshots になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('BmzPaths','resolvesPathsFromConfigToml','resolve','active_profile が main、スクショ保存先が data/shots の config.toml から、プロフィール main の score.db・library.db・先頭の data/ を除いた shots フォルダが求まり、プロフィール指定 sub ではそれが使われ、プロフィール一覧は main・sub の順になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('BmzPlayLogService','findsLatestPlayBeforeScreenshot','findNear','時刻1000・1300・1310(オートプレイ)の履歴で、時刻1320の撮影には1300のHardのプレイ1件が返り(EXスコア175・BP3)、ランプID 6 指定でも見つかるが10指定では空になり、プレイから601秒後や最初のプレイより前の撮影では空になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('BmzTableReader','readsLibraryChartsAndDifficultyTables','readAll','library.db から楽曲を sha256 で引くと同じ sha256 の最初の行(表示タイトル「Song [ANOTHER]」、レベル12)が返り、難易度表はタグ sl の表1つ、空のレベル0を除いたフォルダ sl12 1つに、その曲が入って読み込まれる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('ClearLamp','findsLongerNamesBeforeNamesTheyContain','findIn','EXHARD CLEAR・LIGHT ASSIST EASY CLEAR を含む文字列ではそれらが見つかり、曲名に MAX を含んでも CLEAR のスクショは CLEAR になる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('ClearLamp','idsFollowBeatorajaNumbering','fromId','NO PLAY が 0、HARD CLEAR が 6、MAX が 10 で、7 は EXHARD、11 は該当なしになる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('ClearLamp','looksUpByNameAndBmzLabel','fromDisplayName','前後空白・小文字の「 clear 」が CLEAR、LightAssistEasy が LIGHT ASSIST EASY CLEAR に引け、Hazard は該当なしになる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('ClearTypeMapper','mapsBmzClearLabels','fromBmzLabel','BMZのラベル Normal が5、ExHard が7になり、知らない Hazard は null になり、ID 6 は HARD CLEAR、Normal 経由の ID は CLEAR というランプ名に戻る。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordAutoPostQueue','offerAcceptsOnlyResultScreenshots','offer','リザルト画面とプレイ画面のスクショを1枚ずつ入れると、行列に残るのはリザルトの1枚だけになる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordAutoPostQueue','offerSkipsAlreadyPosted','offer','Discord 投稿済みの印が付いた result.png を入れても、行列は0枚のままになる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordAutoPostQueue','pollBatchAndRequeueFront','pollBatch','3枚並べて2枚取り出すと残り1枚になり、その2枚を先頭に戻すと3枚に戻って、次に取り出す1枚目が a.png になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordAutoPostQueue','pollBatchNeverReturnsMoreThanAvailable','pollBatch','1枚しか並んでいない行列に4枚を求めても、返るのは1枚だけになる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordAutoPostQueue','removePostedDropsMatchingEntry','removePosted','a.png と b.png を並べて a.png を取り除くと、残りは1枚で、取り出すと b.png になる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordWebhookService','keepsFileNamesFromBreakingTheHeader','headerSafeFileName','二重引用符と改行を含むファイル名が、引用符は ''、改行は空白に置き換わる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordWebhookService','picksTheImageTypeFromTheExtension','contentType','.PNG は image/png、.jpeg は image/jpeg、拡張子なしは image/png になる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('DiscordWebhookService','refusesMoreImagesThanDiscordAllows','post','上限より1枚多い画像を渡すと、送信せずに失敗が返る。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('FilenameParser','beatorajaPlayerParsesMillisecondLikeNamesAsBeatoraja','parse','プレイヤー指定なし(beatoraja)では「20250908_141530_123_456 CLEAR AAA.png」のようなミリ秒風の名前も beatoraja 形式で読み、撮影時刻は秒まで、ランプ CLEAR、ランク AAA になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('FilenameParser','bmzPlayerIgnoresOtherNames','parse','BMZ指定で形式に合わない「bmz-screenshot-1761555600123.png」は画面種別が空になり、リザルト画面と判定されない。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('FilenameParser','bmzResultWithUnknownLampKeepsWholeBodyAsTitle','parse','BMZ形式で末尾が知らないラベル(Hazard)の「Song_Hazard」は、撮影時刻は取れたうえで、リザルト扱いのまま本文全体が曲名になりランプは空になる。','成功');
@@ -1030,6 +1088,9 @@ INSERT INTO "_test"("class","name","method","checks","status") VALUES('PlayScore
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('PlayerKind','detectsPlayerKindFromFolderContents','detect','config_sys.json のあるフォルダは beatoraja、config.toml のある data フォルダとその親フォルダは BMZ、どちらもないフォルダは不明と判定される。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostBatchSplitter','partitionReturnsEmptyForEmptyInput','partition','空の一覧を渡すと空のリストが返る。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostBatchSplitter','partitionSplitsIntoFixedSizeBatches','partition','6件を最大4件で分けると、4件と2件の2束に順番どおり分かれる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostTextComposer','joinsOneLinePerScreenshotInOrder','merged','2枚のスクショが既定の書式で「表記 曲名 ランプ ランク」の行になり、渡した順に改行でつながる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostTextComposer','shortensLongTitlesUntilTheTweetFits','tweetTexts','長い日本語の曲名4枚のツイートは曲名が短くされ、短くした件数が数えられて280以内に収まる。','成功');
+INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostTextComposer','usesTheLampGroupedFormForManyImages','tweetTexts','8枚のバッチはランプ別まとめ形式の「HC : …」「NC : …」の2行になり、曲名の短縮は数えない。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('PostTextFormat','normalizedAppendsMissingItemsDisabled','normalized','BP と未知の項目だけの書式を正規化すると、全項目の数にそろい、先頭は有効な BP のまま、補われた2番目の項目は無効になる。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('TweetTextGenerator','allItemsWithAffixes','generate','全項目を有効にしてスコアを渡すと、「★12 Song FULL COMBO CLEAR AA BP45 87.33% EX2620 AAA-47」と前後の文字付きで並ぶ。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('TweetTextGenerator','defaultFormatMatchesOriginalLayout','generate','既定の書式では、スコアありでも表記だけの版でも「★12 Song FULL COMBO CLEAR AAA」になる。','成功');
@@ -1050,15 +1111,15 @@ INSERT INTO "_test"("class","name","method","checks","status") VALUES('VersionCo
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('VersionComparator','comparePatchVersions','isNewer','1.3.0 に対して 1.3.1 は新しく、同じ 1.3.0 と古い 1.2.9 は新しくないと判定される。','成功');
 INSERT INTO "_test"("class","name","method","checks","status") VALUES('VersionComparator','normalizeStripsLeadingV','normalize','v1.3.0 から先頭の v が外れて 1.3.0 になる。','成功');
 
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(1,'MainFrame','投稿処理をメイン画面から切り出す','MainFrame は画面組み立てに加え、X 投稿（postToTwitter、819〜926行）、Discord 手動送信（postToDiscord、928〜1010行）、Discord 自動投稿（tryAutoPostDiscord・postDiscordBatch、572〜660行）、投稿文の生成と曲名の自動短縮（resolveEntryMessage〜abbreviateBatchIfOverLimit、374〜721行）、確認ダイアログ（promptFinalPostTexts・promptFinalDiscordPostTexts）まで抱え、約1250行になっている。投稿文の組み立てを PostTextBuilder のような部品に、投稿の実行と投稿済み記録の更新を X 用・Discord 用の投稿クラスに、確認ダイアログを独立したダイアログクラスに移し、MainFrame はボタンから呼び出すだけにする。投稿文の作り方を画面なしで試験でき、変更の影響範囲も狭くなる。','高','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(2,'MainFrame','X と Discord の投稿後処理の重複をまとめる','postToTwitter の 879〜924行と postToDiscord の 974〜1008行は、バッチを順に送り失敗で打ち切る流れ、成功分を投稿済みにして savePostedStateQuietly と databasePanel.setPostedStateStore を呼ぶ処理、「N 枚までは投稿済みです」の案内文作りがほぼ同じで、さらに成功時と失敗時の中でも投稿済みにする処理が二重に書かれている。送信関数と投稿済みの付け方だけを引数にした共通の手順に寄せれば、片方だけ直し忘れる事故を防げる。','中','候補');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(1,'MainFrame','投稿処理をメイン画面から切り出す','MainFrame は画面組み立てに加え、X 投稿（postToTwitter、819〜926行）、Discord 手動送信（postToDiscord、928〜1010行）、Discord 自動投稿（tryAutoPostDiscord・postDiscordBatch、572〜660行）、投稿文の生成と曲名の自動短縮（resolveEntryMessage〜abbreviateBatchIfOverLimit、374〜721行）、確認ダイアログ（promptFinalPostTexts・promptFinalDiscordPostTexts）まで抱え、約1250行になっている。投稿文の組み立てを PostTextBuilder のような部品に、投稿の実行と投稿済み記録の更新を X 用・Discord 用の投稿クラスに、確認ダイアログを独立したダイアログクラスに移し、MainFrame はボタンから呼び出すだけにする。投稿文の作り方を画面なしで試験でき、変更の影響範囲も狭くなる。','高','完了');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(2,'MainFrame','X と Discord の投稿後処理の重複をまとめる','postToTwitter の 879〜924行と postToDiscord の 974〜1008行は、バッチを順に送り失敗で打ち切る流れ、成功分を投稿済みにして savePostedStateQuietly と databasePanel.setPostedStateStore を呼ぶ処理、「N 枚までは投稿済みです」の案内文作りがほぼ同じで、さらに成功時と失敗時の中でも投稿済みにする処理が二重に書かれている。送信関数と投稿済みの付け方だけを引数にした共通の手順に寄せれば、片方だけ直し忘れる事故を防げる。','中','完了');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(3,'MainFrame','UI スレッドでのファイル・DB 処理をなくす','refreshScreenshots はフォルダ走査と reloadTableRegistry（難易度表・プレイ記録の再読み込み）を画面スレッドで行い、onScreenshotDetected→syncDatabaseEntry も新しいスクショ1枚ごとに難易度表・プレイ記録の再読み込みと DB 書き込み・一覧の全件読み直しを画面スレッドで行う。さらに resolvePostContext は選択が変わるたびに1枚ごとに DB 検索と照合を行い、多数選択時に画面が固まりうる。これらを SwingWorker などで裏に回し、プレイ記録の再読み込みは必要なものだけに絞るとよい。','中','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(4,'MainFrame','Discord の10枚上限の直書きを定数にする','Discord の1回あたりの画像上限が updateActionButtons（437〜438行の「11枚以上は10枚ずつ」）と postToDiscord（941行の PostBatchSplitter.partition の 10）に数値で直書きされている。X 側は ClixService.MAX_IMAGES_PER_POST を使っているので、Discord も DiscordWebhookService 側に定数を置いて参照すれば、上限変更時の直し漏れを防げる。','低','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(5,'MainFrame','設定ダイアログ呼び出し後の保存処理を共通化する','openTablePriorityDialog・openPostTextFormatDialog・openTableNotationRulesDialog（1112〜1210行）は、結果が null なら終了、config に設定して config.save、失敗時に同じエラーダイアログ、という同じ手順を3回書いている。難易度表が未読込のときの案内と warnAboutFailedTableFiles の呼び出しも2回重複し、java.util や DifficultyTableRegistry の完全修飾名が散らばって読みにくい。保存とエラー表示を1つの補助メソッドにまとめ、import を整理する。','低','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(6,'SettingsDialog','Webhook 編集が保存前に設定へ漏れるのを直す','loadValues で webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks())) としているが、コピーされるのは一覧だけで中の DiscordWebhookEntry は config と同じものなので、WebhookTableModel.setValueAt で名前や URL を書き換えると、保存せずにダイアログを閉じても実行中の設定が変わってしまう。読み込み時に各項目を複製してから表に渡すようにすれば、保存ボタンを押したときだけ設定が変わるようになる。','高','候補');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(4,'MainFrame','Discord の10枚上限の直書きを定数にする','Discord の1回あたりの画像上限が updateActionButtons（437〜438行の「11枚以上は10枚ずつ」）と postToDiscord（941行の PostBatchSplitter.partition の 10）に数値で直書きされている。X 側は ClixService.MAX_IMAGES_PER_POST を使っているので、Discord も DiscordWebhookService 側に定数を置いて参照すれば、上限変更時の直し漏れを防げる。','低','完了');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(5,'MainFrame','設定ダイアログ呼び出し後の保存処理を共通化する','openTablePriorityDialog・openPostTextFormatDialog・openTableNotationRulesDialog（1112〜1210行）は、結果が null なら終了、config に設定して config.save、失敗時に同じエラーダイアログ、という同じ手順を3回書いている。難易度表が未読込のときの案内と warnAboutFailedTableFiles の呼び出しも2回重複し、java.util や DifficultyTableRegistry の完全修飾名が散らばって読みにくい。保存とエラー表示を1つの補助メソッドにまとめ、import を整理する。','低','完了');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(6,'SettingsDialog','Webhook 編集が保存前に設定へ漏れるのを直す','loadValues で webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks())) としているが、コピーされるのは一覧だけで中の DiscordWebhookEntry は config と同じものなので、WebhookTableModel.setValueAt で名前や URL を書き換えると、保存せずにダイアログを閉じても実行中の設定が変わってしまう。読み込み時に各項目を複製してから表に渡すようにすれば、保存ボタンを押したときだけ設定が変わるようになる。','高','完了');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(7,'SettingsDialog','設定項目ごとのセクションを別クラスに分ける','1つのクラスにフォルダ・X ログイン・Webhook・クリアランプ表示名・Discord 自動投稿・自動更新・外観の7区画の画面作り（buildFolderSection〜buildAppearanceSection）、読み込み（loadValues）、保存（saveSettings）と2つの表モデルが同居しており、項目を1つ足すたびに3か所を直す必要がある。区画ごとに「画面を作る・設定から読む・設定へ書く」を持つ小さなパネルクラスに分け、ClearLampLabelTableModel と WebhookTableModel も別ファイルにする。あわせて使われていない stretch メソッド（95〜99行）を消し、各所の javax.swing・java.awt の完全修飾名を import に直す。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(8,'DatabasePanel','削除と編集の DB・ファイル操作を画面から分ける','deleteSelectedRows（386〜435行）は画面スレッドで画像ファイルの削除と DB 行の削除を直接行い、DatabaseTableModel.setValueAt（667〜694行）はセル1つの編集ごとに DB 更新と全件の読み直し（reload）を行っている。ファイル削除と DB 更新をサービス側の1メソッドにまとめて裏で実行し、編集時は変わった行だけを差し替えるようにすると、件数が多いときの固まりを防ぎ、画面クラスがファイル操作を知らずに済む。あわせて、どこからも呼ばれていない getSelectedRecord を削除する。','中','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(9,'PreviewPanel','プレビュー画像の読み込みを画面スレッドから外す','showEntries が各エントリについて buildPreviewRow から loadScaledImage を呼び、原寸のスクショを ImageIO.read で読み込んで縮小する処理を画面スレッド上で同期的に行っている。最大で数十枚を選ぶと選択のたびに画面が固まり、キャッシュもないので並び替えのたびに全画像を読み直す。ThumbnailCache と同様に裏スレッドで読み込み、プレビュー幅のサイズでキャッシュして、完成した行から差し替える形にすると操作が軽くなる。','高','候補');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(9,'PreviewPanel','プレビュー画像の読み込みを画面スレッドから外す','showEntries が各エントリについて buildPreviewRow から loadScaledImage を呼び、原寸のスクショを ImageIO.read で読み込んで縮小する処理を画面スレッド上で同期的に行っている。最大で数十枚を選ぶと選択のたびに画面が固まり、キャッシュもないので並び替えのたびに全画像を読み直す。ThumbnailCache と同様に裏スレッドで読み込み、プレビュー幅のサイズでキャッシュして、完成した行から差し替える形にすると操作が軽くなる。','高','完了');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(10,'ScreenshotListPanel','使われていないScreenshotListPanelを削除する','ScreenshotListPanel はどのクラスからも生成されておらず、表形式のデータベース画面に置き換えられた旧部品として残っている。中のサムネイル読み込み（loadThumbnail）は画面スレッドで画像を読み、上限なしの HashMap に溜め続けるなど、現行の ThumbnailCache と重複した古い実装でもある。削除すれば読む人の混乱と保守対象が減る。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(11,'ThumbnailCache','読み込みに失敗した画像を毎回読み直さないようにする','load は render が null（壊れた画像や読めないファイル）を返すと何も記録せず pending から外すだけなので、次の get で再び読み込みが依頼される。表が再描画されるたびに同じ壊れたファイルの読み込みが繰り返される。失敗したパスを専用の集合か代わりのアイコンで記録し、一定時間またはファイル更新まで再試行しないようにすると無駄な読み込みが防げる。また render で例外をすべて握りつぶしているので、原因を記録するとよい。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(12,'TablePriorityDialog','並べ替え・件数表示などダイアログ間の重複をまとめる','TablePriorityDialog と PostTextFormatDialog はどちらも、ボタンを作る button と選択行を1つ動かす moveBy をほぼ同じ形で持つ。さらに TablePriorityDialog と TableNotationRulesDialog は「難易度表: N 件（読み込んだ.bmtファイル M 件を同名/同タグでまとめた結果）」という件数表示や、OK・キャンセルの組み立て、表名がなければタグを出す表示処理を同じ文で書いている。共通の小さな部品（並べ替え可能なリスト、件数ラベル、OK/キャンセル付きダイアログの土台）に切り出すと文言や動作のずれを防げる。','低','候補');
@@ -1071,9 +1132,9 @@ INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUE
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(19,'AppUpdateService','Windows 判定を共通化する','AppUpdateService、WindowsUpdateLauncher、ProcessUtils にそれぞれ同じ内容の非公開メソッド isWindows があり、os.name に win を含むかを重複して調べている。共通の道具クラスに1つ置いて使い回すと、判定方法を変えるときの直し漏れを防げる。','低','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(20,'PostedStateStore','posted.json を安全に書き換える','save は posted.json を直接上書きしており、書き込み中にアプリが落ちると JSON が壊れる。そのうえ load は読めないファイルを警告だけで空扱いにするため、次の起動で全件が未投稿に見え、Discord の自動投稿で同じスクショを再送しかねない。一時ファイルに書いてから置き換える方式にし、読めなかったファイルは退避して利用者に知らせると、二重投稿を防げる。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(21,'ChartResolverService','画面種別の判定を文字列比較から外す','resolveFromPlayerData は画面名が Play・Music Select・Decide・Config のどれかかを文字列で直接比べてプレイ検索を省いている。一方 DiscordAutoPostQueue は ScreenshotEntry.isResultScreenshot を使っており、判定の基準が2か所に分かれている。ScreenshotEntry 側に「プレイ結果を持ちうる画面か」を返すメソッドを用意してそれを使うと、画面名の追加や変更で片方だけ直し忘れることを防げる。','中','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(22,'DiscordWebhookService','枚数上限と画像形式の決め打ちをなくす','post は上限10枚を数値の直書きで判定しており、ClixService.MAX_IMAGES_PER_POST のような定数になっていない。また buildMultipartBody はファイルの種類によらず image/png を付け、ファイル名もそのまま引用符の中に入れている。上限を公開定数にして呼び出し側の分割処理と共有し、Content-Type を拡張子から決め、ファイル名の引用符や改行を除くと、仕様変更と想定外のファイル名に強くなる。','低','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(23,'ScreenshotWatcher','一時的な読み取り失敗でフォルダ監視が止まるのを直す','waitForFile は Files.size の IOException(書き込み途中のロックなど)でも割り込み旗を立てて抜けるため、次の watchService.poll が InterruptedException を出し、watchLoop が return して以後の新しいスクショを検知しなくなる。ログにも残らない。IOException では割り込み旗を立てずに待ちを続け(InterruptedException のときだけ立てる)、listener.onScreenshotAdded の呼び出しも try で囲んでログに残して続行するようにすれば、監視が黙って止まる事態を防げる。なお MainFrame の listener は画面スレッドへ処理を渡すだけなので、通知先の処理で出た例外はこのループには届かない。','高','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(24,'TwitterAuthService','ログイン確認と投稿で使う仕組みがずれている','verifyStoredSession と loginInteractive は、設定に保存した Cookie を ClixAuthSupport で clix 用 auth.json に書き、clix の auth status で有効性を確かめている。一方で実際の投稿は TwitterBrowserPostService がブラウザプロファイルのログイン状態だけを使い、保存 Cookie も clix も使わない。そのため clix が無いと投稿できる状態でも「認証失敗」となり、逆に Cookie が有効でもプロファイル側が切れていれば投稿画面が開けない。確認方法を投稿と同じブラウザプロファイル側（例えば CDP で x.com の Cookie や投稿画面の有無を見る）にそろえ、clix 依存と Cookie の設定保存を整理すれば、判定と実際の結果が一致し外部 CLI への依存も減る。','高','候補');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(22,'DiscordWebhookService','枚数上限と画像形式の決め打ちをなくす','post は上限10枚を数値の直書きで判定しており、ClixService.MAX_IMAGES_PER_POST のような定数になっていない。また buildMultipartBody はファイルの種類によらず image/png を付け、ファイル名もそのまま引用符の中に入れている。上限を公開定数にして呼び出し側の分割処理と共有し、Content-Type を拡張子から決め、ファイル名の引用符や改行を除くと、仕様変更と想定外のファイル名に強くなる。','低','完了');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(23,'ScreenshotWatcher','一時的な読み取り失敗でフォルダ監視が止まるのを直す','waitForFile は Files.size の IOException(書き込み途中のロックなど)でも割り込み旗を立てて抜けるため、次の watchService.poll が InterruptedException を出し、watchLoop が return して以後の新しいスクショを検知しなくなる。ログにも残らない。IOException では割り込み旗を立てずに待ちを続け(InterruptedException のときだけ立てる)、listener.onScreenshotAdded の呼び出しも try で囲んでログに残して続行するようにすれば、監視が黙って止まる事態を防げる。なお MainFrame の listener は画面スレッドへ処理を渡すだけなので、通知先の処理で出た例外はこのループには届かない。','高','完了');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(24,'TwitterAuthService','ログイン確認と投稿で使う仕組みがずれている','verifyStoredSession と loginInteractive は、設定に保存した Cookie を ClixAuthSupport で clix 用 auth.json に書き、clix の auth status で有効性を確かめている。一方で実際の投稿は TwitterBrowserPostService がブラウザプロファイルのログイン状態だけを使い、保存 Cookie も clix も使わない。そのため clix が無いと投稿できる状態でも「認証失敗」となり、逆に Cookie が有効でもプロファイル側が切れていれば投稿画面が開けない。確認方法を投稿と同じブラウザプロファイル側（例えば CDP で x.com の Cookie や投稿画面の有無を見る）にそろえ、clix 依存と Cookie の設定保存を整理すれば、判定と実際の結果が一致し外部 CLI への依存も減る。【保留の理由】ログイン確認の仕組みそのものを置き換える変更で、正しさは実際の X アカウントとブラウザでしか確かめられない。どの方式で確認するか(ブラウザを裏で起動するか、保存 Cookie の有無だけで判断するか)を決めてから着手する。','高','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(25,'TwitterBrowserPostService','ブラウザ起動処理の重複をまとめる','TwitterBrowserPostService の post と TwitterChromeLoginService の openLoginBrowser・runCdpExtraction は、どちらも ChromiumBrowserLocator での実行ファイル探し、プロファイル作成、ChromiumProfileLock でのロック待ちとファイル消去、--user-data-dir などの起動引数の組み立て、browserProcess の保持と ProcessUtils での停止を別々に書いている。起動引数は post が baseLaunchArgs を使わず自前で並べており、片方だけ直す事故が起きやすい。プロファイルを指定してブラウザを起動しデバッグポートを返す共通部品を作り、両者から使うようにすれば、引数やロック手順の変更が一か所で済む。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(26,'AppLogging','データフォルダの決め方が二重にある','AppLogging.resolveLogDir と AppPaths.resolveAppData が、それぞれ APPDATA と user.home から beatoraja-screenshot-manager（または .beatoraja-screenshot-manager）を組み立てている。フォルダ名や置き場所を変えるときに片方だけ直すとログと設定が別の場所に分かれる。AppLogging が AppPaths の初期化に依存しないよう注意しつつ、場所の決め方を1つの関数にまとめる。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(27,'TwitterAuthService','使われていない ensureAuthenticated を整理する','ensureAuthenticated（確認→静かな取り直し→対話ログイン）は、どの画面からも呼ばれていない。SettingsDialog は verifyStoredSession と refreshSilently を自分で組み合わせて同じ流れを書いている。どちらかに寄せ、使わない方を消せば、認証の流れを読む人が迷わなくなる。','低','候補');
@@ -1082,7 +1143,7 @@ INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUE
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(30,'TwitterAuthService','loginInteractive の不要な null 判定を消す','loginInteractive は listener が null のとき早い段階で「ログイン UI が利用できません」を投げるのに、その後も listener != null の判定を何度も繰り返している。冒頭で null を弾いて失敗を返すようにすれば、ブラウザを無駄に起動することもなくなり、流れも読みやすくなる。','低','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(31,'AppConfig','設定クラスを分野ごとに分割する','AppConfig はファイルの読み書き(load・save)と、プレイヤー・Discord・X認証・画面表示・難易度表・投稿文・ランプ表示名という無関係な設定の getter/setter 60個近くを1クラスに抱えている。さらに playerKind や resolveBeatorajaDirectory はフォルダを調べる処理まで含む。分野ごとの小さな設定クラス(Discord設定、X認証設定、表示設定など)に分けて AppConfig はそれらを束ねるだけにし、保存処理も別の保存役に移すと、変更の影響範囲が分かりやすくなり単体テストも書きやすくなる。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(32,'AppConfig','Xトークンの旧形式欄を移行後に廃止する','twitterAuthToken・twitterCt0 欄は、load 時の normalizeTwitterCookies で twitterCookies に移し替えた後は常に空になるのに、getTwitterAuthToken・getTwitterCt0 は今もそれを予備として読み、setTwitterCookies などでも毎回空にしている。移行処理だけに旧欄を残し(読み込み専用の項目にする)、getter はCookie一覧だけを見るようにすると、どこに値があるかの分岐が消えて読みやすくなる。','低','候補');
-INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(33,'ClearTypeMapper','ランプ名の一覧を1か所にまとめる','beatorajaのランプ名11種が ClearTypeMapper の CLEAR_NAME_TO_ID と CLEAR_NAMES、ClearLampLabels の CANONICAL_ORDER・DEFAULT_SHORT_LABELS、FilenameParser の CLEAR_TYPES に別々に書かれている(FilenameParser は部分一致のため長い順という別の並び)。ランプをIDと名前・BMZラベル・既定の短い名前を持つ列挙型にまとめ、各クラスはそこから導くようにすると、追加や表記変更の漏れを防げる。','高','候補');
+INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(33,'ClearTypeMapper','ランプ名の一覧を1か所にまとめる','beatorajaのランプ名11種が ClearTypeMapper の CLEAR_NAME_TO_ID と CLEAR_NAMES、ClearLampLabels の CANONICAL_ORDER・DEFAULT_SHORT_LABELS、FilenameParser の CLEAR_TYPES に別々に書かれている(FilenameParser は部分一致のため長い順という別の並び)。ランプをIDと名前・BMZラベル・既定の短い名前を持つ列挙型にまとめ、各クラスはそこから導くようにすると、追加や表記変更の漏れを防げる。','高','完了');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(34,'PlayerPlayLogService','PlayLogEntry を共通の場所へ移し、履歴読み込み処理を共通化する','PlayLogSource や BmzPlayLogService が使う PlayLogEntry が beatoraja 実装の PlayerPlayLogService の中で定義されており、BMZ側が beatoraja 側のクラスに依存している。また両クラスとも readColumns(PRAGMA で列確認)、時刻順の並べ替え、二分探索、available フラグと close を同じ形で重複して持つ。PlayLogEntry を独立したレコードにし、列名の違いだけを差し替える共通の基底クラスか補助クラスにまとめると、重複が減りプレイヤー追加も楽になる。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(35,'TableLookupService','非推奨クラスに残る EnrichedScreenshot と推定処理を移す','TableLookupService は非推奨とされているが、照合結果の EnrichedScreenshot が ScreenshotDatabase・MainFrame・ChartResolverService で広く使われ、deriveBeatorajaDirectory も AppConfig から呼ばれているため消せない。EnrichedScreenshot を model パッケージの独立したレコードに、deriveBeatorajaDirectory を player パッケージ(BmzPaths・BeatorajaPaths 側)に移し、このクラスを削除すると、非推奨のクラスに依存する箇所がなくなる。','中','候補');
 INSERT INTO "_refactor"("id","class","title","detail","priority","status") VALUES(36,'DifficultyTableRegistry','表記ルールの型の二重定義をなくす','同じ内容の表記ルールが、保存用の AppConfig.TableNotationRule(可変クラス)と照合用の DifficultyTableRegistry.TableNotationRule(レコード)の2つあり、ChartResolverService の toRegistryRules で詰め替えている。さらに DifficultyTableRegistry は空キーの定数を AppConfig から参照しており、table パッケージが config に依存している。1つの型にまとめるか、定数を表記ルール側に置くと詰め替えと依存がなくなる。','低','候補');
@@ -1185,6 +1246,9 @@ INSERT INTO "Badge"("method","signature","behavior","利用_ResultPalette","利�
 INSERT INTO "BadgeCellRenderer"("method","signature","behavior","利用_Badge","利用_UiTheme") VALUES('getTableCellRendererComponent','Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column)','セル値を前後の空白を除いた文字列にし、「-」なら空として扱う。生の値から色を、表示名変換関数から表示文字を決めて保持し、太字の一回り小さいフォントとツールチップを設定して自身を返す。',NULL,NULL);
 INSERT INTO "BadgeCellRenderer"("method","signature","behavior","利用_Badge","利用_UiTheme") VALUES('paintComponent','void paintComponent(Graphics g)','通常の背景を描いたあと、保持した文字と色でピルを1個描く。中央寄せ指定なら中央、そうでなければ左端から6ピクセルの位置に描く。表示文字が空なら薄い色の「-」を描く。',NULL,NULL);
 
+INSERT INTO "BatchPoster"("method","signature","behavior","利用_ScreenshotEntry") VALUES('Result','record Result(List<ScreenshotEntry> posted, String error)','送れたスクショと、失敗したときの内容(全部送れたら null)。succeeded で成否を返す。',NULL);
+INSERT INTO "BatchPoster"("method","signature","behavior","利用_ScreenshotEntry") VALUES('postInOrder','Result postInOrder(List<List<ScreenshotEntry>> batches, List<String> texts, Sender sender, IntConsumer onBatchStart)','i 番目のバッチを i 番目の本文で順に送る。送る前に1始まりのバッチ番号を onBatchStart に知らせる。失敗したらそこで止め、それまでに送れた分と失敗内容を返す。',NULL);
+
 INSERT INTO "BeatorajaPaths"("method","signature","behavior","利用_AppLogging") VALUES('beatorajaDirectory','Path beatorajaDirectory()','元になったbeatorajaフォルダのパスを返す。',NULL);
 INSERT INTO "BeatorajaPaths"("method","signature","behavior","利用_AppLogging") VALUES('listPlayerNames','List<String> listPlayerNames(Path beatorajaDirectory)','beatorajaフォルダの config_sys.json からプレイヤーフォルダの場所を読み(読めなければ player を使う)、その下のフォルダ名を名前順で返す。フォルダが null や存在しない場合は空の一覧を返す。',NULL);
 INSERT INTO "BeatorajaPaths"("method","signature","behavior","利用_AppLogging") VALUES('playerDirectory','Path playerDirectory()','使用するプレイヤーのフォルダのパスを返す。',NULL);
@@ -1250,13 +1314,26 @@ INSERT INTO "ChromiumDevToolsClient"("method","signature","behavior","利用_Chr
 INSERT INTO "ChromiumProfileLock"("method","signature","behavior","利用_AppLogging") VALUES('clearDebugArtifacts','void clearDebugArtifacts(Path profileDir)','プロファイルフォルダから前回の DevToolsActivePort とその lock ファイルを消す。消せなくても記録を残すだけで続ける。',NULL);
 INSERT INTO "ChromiumProfileLock"("method","signature","behavior","利用_AppLogging") VALUES('waitForProfileUnlock','void waitForProfileUnlock(Path profileDir)','プロファイルの SingletonLock と lockfile がどちらも無い状態が0.4秒続くまで待つ。25秒たっても解けなければ「Chrome / Edge のウィンドウが残っていないか確認してください」の例外を投げる。',NULL);
 
-INSERT INTO "ClearLampLabels"("method","signature","behavior") VALUES('isShownInGroupedPost','boolean isShownInGroupedPost(String canonicalClearType, Map<String, Boolean> overrides)','ランプ別まとめ投稿でそのランプを載せるかを返す。上書き設定があればそれに従い、なければ既定で隠すランプ(アシスト系・FAILED・NO PLAY)以外は載せる。');
-INSERT INTO "ClearLampLabels"("method","signature","behavior") VALUES('resolve','String resolve(String clearType, Map<String, String> overrides)','ランプ名を大文字化したキーで上書き表示名を探し、空でない設定があればそれを、なければ元のランプ名を返す。null は空文字にする。');
-INSERT INTO "ClearLampLabels"("method","signature","behavior") VALUES('resolveShort','String resolveShort(String clearType, Map<String, String> overrides)','ランプ別まとめ投稿用の短い名前を返す。ユーザーの上書き、既定の短い名前(HC、FC など)、元のランプ名の順に使い、空のランプ名には空文字を返す。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('bmzLabel','String bmzLabel()','BMZ Player の clear_type ラベル(例: Hard)を返す。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('colorRgb','int colorRgb()','バッジに使う色を RGB の整数で返す(ダークテーマ向けの値)。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('defaultShortName','String defaultShortName()','ランプ別まとめ投稿で使う既定の短い名前(HC、FC など。FAILED は空)を返す。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('displayName','String displayName()','beatoraja がスクショ名に書くランプ名(例: HARD CLEAR)を返す。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('findIn','Optional<ClearLamp> findIn(String text)','文字列に含まれる最初のランプ名を探して返す。名前の長い順に試すので、EXHARD CLEAR が HARD CLEAR や CLEAR と取り違えられない。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('fromBmzLabel','Optional<ClearLamp> fromBmzLabel(String label)','BMZ Player のラベル(前後空白は無視、大文字小文字は区別)に当たるランプを返す。null や不明なラベルなら空。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('fromDisplayName','Optional<ClearLamp> fromDisplayName(String name)','ランプ名(大文字小文字・前後空白は無視)に当たるランプを返す。null や不明な名前なら空。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('fromId','Optional<ClearLamp> fromId(int id)','クリアIDに当たるランプを返す。範囲外なら空。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('id','int id()','beatoraja のクリアID(0=NO PLAY 〜 10=MAX)を返す。列挙の並び順そのもの。');
+INSERT INTO "ClearLamp"("method","signature","behavior") VALUES('shownInGroupedPostByDefault','boolean shownInGroupedPostByDefault()','ランプ別まとめ投稿に既定で載せるかを返す。アシスト系・FAILED・NO PLAY は false。');
 
-INSERT INTO "ClearTypeMapper"("method","signature","behavior") VALUES('fromBmzLabel','Integer fromBmzLabel(String label)','BMZ Player の clear_type ラベル(Normal、ExHard など)をbeatoraja番号のクリアIDに変換する。null や不明なラベルなら null を返す。');
-INSERT INTO "ClearTypeMapper"("method","signature","behavior") VALUES('toClearId','Integer toClearId(String clearTypeName)','beatorajaのランプ名(大文字小文字・前後空白を問わない)をクリアIDに変換する。空や不明な名前なら null を返す。');
-INSERT INTO "ClearTypeMapper"("method","signature","behavior") VALUES('toClearName','String toClearName(int clearId)','クリアIDを、beatorajaがスクショ名に書くランプ名(例: 6→HARD CLEAR)に変換する。範囲外なら空文字を返す。');
+INSERT INTO "ClearLampLabels"("method","signature","behavior","利用_ClearLamp") VALUES('defaultShortName','String defaultShortName(String canonicalClearType)','ランプ別まとめ投稿での既定の短い名前を ClearLamp から返す。不明なランプなら空文字。',NULL);
+INSERT INTO "ClearLampLabels"("method","signature","behavior","利用_ClearLamp") VALUES('isShownInGroupedPost','boolean isShownInGroupedPost(String canonicalClearType, Map<String, Boolean> overrides)','ランプ別まとめ投稿でそのランプを載せるかを返す。上書き設定があればそれに従い、なければ既定(アシスト系・FAILED・NO PLAY は載せない)に従う。',NULL);
+INSERT INTO "ClearLampLabels"("method","signature","behavior","利用_ClearLamp") VALUES('isShownInGroupedPostByDefault','boolean isShownInGroupedPostByDefault(String canonicalClearType)','そのランプを利用者の指定がないときにランプ別まとめ投稿へ載せるかを ClearLamp から返す。不明なランプは載せる。',NULL);
+INSERT INTO "ClearLampLabels"("method","signature","behavior","利用_ClearLamp") VALUES('resolve','String resolve(String clearType, Map<String, String> overrides)','ランプ名を大文字化したキーで上書き表示名を探し、空でない設定があればそれを、なければ元のランプ名を返す。null は空文字にする。',NULL);
+INSERT INTO "ClearLampLabels"("method","signature","behavior","利用_ClearLamp") VALUES('resolveShort','String resolveShort(String clearType, Map<String, String> overrides)','ランプ別まとめ投稿用の短い名前を返す。ユーザーの上書き、ClearLamp の既定の短い名前(HC、FC など)、元のランプ名の順に使い、空のランプ名には空文字を返す。',NULL);
+
+INSERT INTO "ClearTypeMapper"("method","signature","behavior","利用_ClearLamp") VALUES('fromBmzLabel','Integer fromBmzLabel(String label)','BMZ Player の clear_type ラベル(Normal、ExHard など)をbeatoraja番号のクリアIDに変換する。null や不明なラベルなら null を返す。',NULL);
+INSERT INTO "ClearTypeMapper"("method","signature","behavior","利用_ClearLamp") VALUES('toClearId','Integer toClearId(String clearTypeName)','beatorajaのランプ名(大文字小文字・前後空白を問わない)をクリアIDに変換する。空や不明な名前なら null を返す。',NULL);
+INSERT INTO "ClearTypeMapper"("method","signature","behavior","利用_ClearLamp") VALUES('toClearName','String toClearName(int clearId)','クリアIDを、beatorajaがスクショ名に書くランプ名(例: 6→HARD CLEAR)に変換する。範囲外なら空文字を返す。',NULL);
 
 INSERT INTO "ClixAuthSupport"("method","signature","behavior","利用_AppConfig","利用_AppPaths") VALUES('applyAuthEnvironment','void applyAuthEnvironment(AppConfig config, Map<String, String> env)','設定に X の Cookie が保存されていれば、clix-home の下の .config\clix\auth.json に auth_token・ct0・Cookie 一式を default アカウントとして書き、渡された環境変数表の USERPROFILE を clix-home に書き換える。Cookie が無ければ何もしない。',NULL,NULL);
 
@@ -1316,9 +1393,11 @@ INSERT INTO "DiscordAutoPostQueue"("method","signature","behavior","利用_AppLo
 INSERT INTO "DiscordAutoPostQueue"("method","signature","behavior","利用_AppLogging","利用_PostedStateStore","利用_ScreenshotEntry") VALUES('size','int size()','いま並んでいるスクショの枚数を返す。',NULL,NULL,NULL);
 
 INSERT INTO "DiscordWebhookService"("method","signature","behavior","利用_AppLogging") VALUES('PostResult','record PostResult(boolean success, String messageId, String message)','Discord 送信の結果を表す値。成否・メッセージ ID・応答本文またはエラー内容を持つ。',NULL);
-INSERT INTO "DiscordWebhookService"("method","signature","behavior","利用_AppLogging") VALUES('post','PostResult post(String webhookUrl, String text, List<Path> imagePaths)','Webhook URL に wait=true を付け、本文を payload_json、画像を files[n] とした multipart で POST する。URL が空・画像0枚・11枚以上なら送らずに失敗を返す。2xx 応答なら本文の id をメッセージ ID として成功を返し、それ以外は HTTP ステータスと本文、例外時はその内容を失敗として返す。',NULL);
+INSERT INTO "DiscordWebhookService"("method","signature","behavior","利用_AppLogging") VALUES('contentType','String contentType(String fileName)','ファイル名の拡張子から画像の種類(image/jpeg・gif・webp)を返す。それ以外や拡張子なしはスクショの形式である image/png。',NULL);
+INSERT INTO "DiscordWebhookService"("method","signature","behavior","利用_AppLogging") VALUES('headerSafeFileName','String headerSafeFileName(String fileName)','multipart の filename="…" を壊さないよう、ファイル名の二重引用符を '' に、改行を空白に置き換える。',NULL);
+INSERT INTO "DiscordWebhookService"("method","signature","behavior","利用_AppLogging") VALUES('post','PostResult post(String webhookUrl, String text, List<Path> imagePaths)','Webhook URL に wait=true を付け、本文を payload_json、画像を files[n] とした multipart で POST する。URL が空・画像0枚・上限(10枚)超なら送らずに失敗を返す。2xx 応答なら本文の id をメッセージ ID として成功を返し、それ以外は HTTP ステータスと本文、例外時はその内容を失敗として返す。',NULL);
 
-INSERT INTO "FilenameParser"("method","signature","behavior","利用_ClearTypeMapper","利用_PlayerKind","生成_ScreenshotEntry") VALUES('parse','ScreenshotEntry parse(Path filePath)
+INSERT INTO "FilenameParser"("method","signature","behavior","利用_ClearLamp","利用_PlayerKind","生成_ScreenshotEntry") VALUES('parse','ScreenshotEntry parse(Path filePath)
 ScreenshotEntry parse(Path filePath, PlayerKind player)','スクショのパスを解析して ScreenshotEntry を返す。引数1つの版は beatoraja 形式として、プレイヤー種別付きの版は BMZ なら BMZ 形式、それ以外は beatoraja 形式として解析する。BMZ形式ではミリ秒まで撮影時刻に入れ、末尾のランプラベルを beatoraja のランプ名に直し(ランクはファイル名にないので空)、形式に合わない名前は画面種別を空、曲名をファイル名にして返す。',NULL,NULL,NULL);
 
 
@@ -1337,7 +1416,7 @@ INSERT INTO "LampGroupedTweetText"("method","signature","behavior","利用_Clear
 
 INSERT INTO "Main"("method","signature","behavior","利用_AppConfig","利用_AppIcons","利用_AppLogging","利用_AppPaths","生成_AppUpdateService","利用_AppVersion","生成_FirstRunWizard","生成_MainFrame","利用_UiTheme","生成_UpdateProgressDialog") VALUES('main','void main(String[] args)','ログを初期化して未捕捉例外を記録するようにし、設定を読み込んで画面テーマとフォントを適用する。自動更新の対象なら更新進捗画面を出して更新を試し、再起動となればプロセスを終了する。それ以外は初回設定が未完了またはスクリーンショットフォルダ未設定なら初期設定ウィザードを、そうでなければメイン画面を開く。',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 
-INSERT INTO "MainFrame"("method","signature","behavior","生成_AccentButton","利用_AppConfig","利用_AppIcons","利用_AppLogging","利用_AppVersion","生成_ChartResolverService","生成_ClixService","生成_DatabasePanel","利用_DifficultyTableRegistry","生成_DiscordAutoPostQueue","生成_DiscordWebhookService","利用_HelpDialog","生成_LampGroupedTweetText","利用_PlayScore","利用_PlayerKind","利用_PostBatchSplitter","利用_PostTextFormat","生成_PostTextFormatDialog","利用_PostedStateStore","生成_PreviewPanel","生成_ScreenshotDatabase","利用_ScreenshotEntry","生成_ScreenshotFolderCleanupService","利用_ScreenshotRecord","生成_ScreenshotScanner","生成_ScreenshotWatcher","生成_SettingsDialog","利用_TableLookupService","生成_TableNotationRulesDialog","生成_TablePriorityDialog","利用_TweetTextGenerator","利用_TweetTextLimits","生成_TwitterAuthService","生成_TwitterLoginDialog","利用_UiTheme") VALUES('dispose','void dispose()','ウィンドウを閉じる前に、フォルダ監視を止め、DB を閉じ（失敗はログに残すだけ）、サムネイル読み込みを止め、曲情報の照合サービスを閉じてから画面を破棄する。終了時だけでなく、外観変更でウィンドウを作り直すときにも呼ばれる。',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "MainFrame"("method","signature","behavior","生成_AccentButton","利用_AppConfig","利用_AppIcons","利用_AppLogging","利用_AppVersion","利用_BatchPoster","生成_ChartResolverService","生成_ClixService","生成_DatabasePanel","利用_DifficultyTableRegistry","生成_DiscordAutoPostQueue","生成_DiscordWebhookService","利用_HelpDialog","生成_LampGroupedTweetText","利用_PlayerKind","利用_PostBatchSplitter","利用_PostConfirmDialog","生成_PostTextComposer","利用_PostTextFormat","生成_PostTextFormatDialog","利用_PostedStateStore","生成_PreviewPanel","生成_ScreenshotDatabase","利用_ScreenshotEntry","生成_ScreenshotFolderCleanupService","利用_ScreenshotRecord","生成_ScreenshotScanner","生成_ScreenshotWatcher","生成_SettingsDialog","利用_TableLookupService","生成_TableNotationRulesDialog","生成_TablePriorityDialog","生成_TwitterAuthService","生成_TwitterLoginDialog","利用_UiTheme") VALUES('dispose','void dispose()','ウィンドウを閉じる前に、フォルダ監視を止め、DB を閉じ（失敗はログに残すだけ）、サムネイル読み込みを止め、曲情報の照合サービスを閉じてから画面を破棄する。終了時だけでなく、外観変更でウィンドウを作り直すときにも呼ばれる。',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 
 INSERT INTO "MultiColumnSortSupport"("method","signature","behavior") VALUES('createHeaderRenderer','TableCellRenderer createHeaderRenderer()','列見出し用の描画部品を作って返す。見出しを中央寄せにし、並べ替え条件に入っている列には降順なら▼、昇順なら▲と優先順位の番号を付けて表示する。');
 INSERT INTO "MultiColumnSortSupport"("method","signature","behavior") VALUES('getSortSpecs','List<SortSpec> getSortSpecs()','現在の並べ替え条件（列番号と昇順・降順）を優先順に並べた変更不可のコピーを返す。リスト自体はコピーだが、中の条件オブジェクトは内部と共有している。');
@@ -1372,6 +1451,17 @@ INSERT INTO "PlayerPlayLogService"("method","signature","behavior","継承_PlayL
 
 INSERT INTO "PostBatchSplitter"("method","signature","behavior") VALUES('partition','<T> List<List<T>> partition(List<T> items, int maxBatchSize)','一覧を先頭から最大枚数ずつ区切り、変更できない束のリストにして返す。入力が null か空なら空のリストを返し、最大枚数が1未満なら例外を投げる。');
 
+INSERT INTO "PostConfirmDialog"("method","signature","behavior","利用_TweetTextLimits","利用_UiTheme") VALUES('confirmDiscord','List<String> confirmDiscord(Component parent, List<String> texts)','Discord の送信文を送信ごとに編集できる形で1回だけ見せ、確定した本文を返す。文字数の確認はしない。キャンセルなら null。',NULL,NULL);
+INSERT INTO "PostConfirmDialog"("method","signature","behavior","利用_TweetTextLimits","利用_UiTheme") VALUES('confirmTweets','List<String> confirmTweets(Component parent, List<String> initialTexts, int abbreviatedCount)','X の投稿文をツイートごとに編集できる形で見せ、文字数のカウンタ(280超は赤)を付ける。曲名を短くした件数があれば最初の1回だけ注記する。確定時に280を超えるツイートがあれば警告して、入力内容を保ったまま出し直す。キャンセルなら null。',NULL,NULL);
+
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('PostContext','record PostContext(String notation, PlayScore score)','スクショ1枚の行を作るのに要る、投稿表記と照合したプレイのスコア(無ければ null)。照合できないときは NONE(表記なし・スコアなし)を使う。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('TweetTexts','record TweetTexts(List<String> texts, int abbreviatedCount)','X 用の投稿文(投稿1回につき1つ)と、文字数に収めるために曲名を短くした件数。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('join','String join(List<ScreenshotEntry> batch, Map<String, String> messagesByFile)','バッチの各スクショの行を表から引き、改行でつなぐ。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('merged','String merged(List<ScreenshotEntry> entries)','各スクショの行を改行でつないだ1回分の投稿文を返す(Discord の自動投稿で使う)。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('message','String message(ScreenshotEntry entry)','スクショ1枚の行を利用者の投稿文書式とランプ表示名で作る。曲名は短くしない。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('messagesByFile','Map<String, String> messagesByFile(List<ScreenshotEntry> entries)','各スクショの行をファイル名をキーにして、渡した順に並べた表で返す。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PostTextComposer"("method","signature","behavior","利用_AppConfig","生成_LampGroupedTweetText","利用_PlayScore","利用_ScreenshotEntry","利用_TweetTextGenerator","利用_TweetTextLimits") VALUES('tweetTexts','TweetTexts tweetTexts(List<List<ScreenshotEntry>> batches)','バッチごとに X の投稿文を作る。8枚以上のバッチはランプ別まとめ形式、それ未満は1枚1行で、280を超えるときは曲名を長いものから順に、30単位を下限として収まるまで短くする。短くした件数も返す。',NULL,NULL,NULL,NULL,NULL,NULL);
+
 INSERT INTO "PostTextFormat"("method","signature","behavior","利用_PlayScore") VALUES('defaults','PostTextFormat defaults()','既定の書式を返す。難易度表記・曲名・ランプ・DJ RANKを有効、BP(前にBP)・スコアレート(後ろに%)・EXスコア(前にEX)・境目との差を無効にした並びになる。',NULL);
 INSERT INTO "PostTextFormat"("method","signature","behavior","利用_PlayScore") VALUES('getItems','List<Item> getItems()','投稿文の項目(キー・有効か・前後の文字)の並びを返す。',NULL);
 INSERT INTO "PostTextFormat"("method","signature","behavior","利用_PlayScore") VALUES('getRankLabels','Map<String, String> getRankLabels()','DJ RANKの表示名の上書き(ランク→表示名)を返す。',NULL);
@@ -1388,17 +1478,17 @@ INSERT INTO "PostedStateStore"("method","signature","behavior","利用_AppLoggin
 INSERT INTO "PostedStateStore"("method","signature","behavior","利用_AppLogging","利用_AppPaths") VALUES('markTwitterPosted','void markTwitterPosted(String fileName, String tweetId)','ファイル名に X 投稿済みの印を、現在時刻と投稿 ID で付ける。保存は別途 save を呼ぶ必要がある。',NULL,NULL);
 INSERT INTO "PostedStateStore"("method","signature","behavior","利用_AppLogging","利用_AppPaths") VALUES('save','void save()','データフォルダを作ったうえで、すべての記録を整形した JSON として posted.json に書き出す。書けなければ IOException を投げる。',NULL,NULL);
 
-INSERT INTO "PreviewPanel"("method","signature","behavior","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('setClearLampLabels','void setClearLampLabels(Map<String, String> clearLampLabels)','クリアランプの表示名の置き換え表を受け取って保持し（nullなら空の表）、再描画を求める。ヘッダーのランプのピルは次にエントリを表示し直したときにこの表示名で作られる。',NULL,NULL,NULL,NULL,NULL,NULL);
-INSERT INTO "PreviewPanel"("method","signature","behavior","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('setPostOrderChangeListener','void setPostOrderChangeListener(PostOrderChangeListener listener)','投稿順リストでの↑・↓ボタン操作とドラッグでの並び替えを受け取る通知先を登録する。この欄は並び替えを自分では行わず、通知先が順序を変えて表示し直す前提である。',NULL,NULL,NULL,NULL,NULL,NULL);
-INSERT INTO "PreviewPanel"("method","signature","behavior","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('showEntries','void showEntries(List<ScreenshotEntry> entries, Map<String, String> messagesByFile)','表示内容をすべて作り直す。ヘッダーは未選択なら「未選択」、複数なら「N 枚を選択中」と先頭の曲名、1枚なら曲名・撮影日時と記号・レベル・ランク・ランプのピルにする。各エントリについて画像を読み込んで縮小したプレビュー行（番号・画像・ファイル名ごとの投稿文の先頭40文字）と投稿順リストの行を追加する。画像の読み込みは呼び出したスレッド（通常は画面スレッド）でその場で行う。',NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PreviewPanel"("method","signature","behavior","利用_AppLogging","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('setClearLampLabels','void setClearLampLabels(Map<String, String> clearLampLabels)','クリアランプの表示名の置き換え表を受け取って保持し（nullなら空の表）、再描画を求める。ヘッダーのランプのピルは次にエントリを表示し直したときにこの表示名で作られる。',NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PreviewPanel"("method","signature","behavior","利用_AppLogging","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('setPostOrderChangeListener','void setPostOrderChangeListener(PostOrderChangeListener listener)','投稿順リストでの↑・↓ボタン操作とドラッグでの並び替えを受け取る通知先を登録する。この欄は並び替えを自分では行わず、通知先が順序を変えて表示し直す前提である。',NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+INSERT INTO "PreviewPanel"("method","signature","behavior","利用_AppLogging","利用_Badge","生成_CardPanel","利用_ClearLampLabels","利用_ResultPalette","利用_ScreenshotEntry","利用_UiTheme") VALUES('showEntries','void showEntries(List<ScreenshotEntry> entries, Map<String, String> messagesByFile)','表示内容をすべて作り直す。ヘッダーは未選択なら「未選択」、複数なら「N 枚を選択中」と先頭の曲名、1枚なら曲名・撮影日時と記号・レベル・ランク・ランプのピルにする。各エントリについてプレビュー行(番号・画像・投稿文の先頭40文字)と投稿順リストの行を追加する。画像はキャッシュにあればすぐ表示し、なければ場所を空けて裏スレッドで読み込み、読み終わった時点で差し替える(その間に表示し直していれば捨てる)。',NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 
 INSERT INTO "ProcessUtils"("method","signature","behavior","利用_AppLogging") VALUES('destroyProcessTree','void destroyProcessTree(Process process)','渡されたプロセスが生きていれば子プロセスごと強制終了し、最大10秒終了を待つ。Windows では taskkill /F /T を最大15秒待ち、失敗や割り込み時は本体だけを強制終了する。null や終了済みなら何もしない。',NULL);
 
-INSERT INTO "ResultPalette"("method","signature","behavior","利用_UiTheme") VALUES('lampColor','Color lampColor(String lamp)','クリアランプ名（大文字小文字・前後の空白は無視）に対応する色を返す。未知の名前やnullは灰色を返し、ライトテーマでは明るすぎる色を暗くして返す。',NULL);
-INSERT INTO "ResultPalette"("method","signature","behavior","利用_UiTheme") VALUES('rankColor','Color rankColor(String rank)','DJランク（MAX・AAA〜F、大文字小文字は無視）に対応する色を返す。未知の値やnullは灰色を返し、ライトテーマでは明るすぎる色を暗くして返す。',NULL);
-INSERT INTO "ResultPalette"("method","signature","behavior","利用_UiTheme") VALUES('stateColor','Color stateColor(String state)','画面種別（Result・Course Result・Play・Music Select・Decide・Config）に対応する色を返す。大文字小文字は区別し前後の空白だけ除く。未知の値は灰色、nullはテーマ補正なしの灰色を返す。',NULL);
-INSERT INTO "ResultPalette"("method","signature","behavior","利用_UiTheme") VALUES('symbolColor','Color symbolColor(String symbol)','難易度表の記号の文字列のハッシュ値から色相を決め、記号ごとに異なる色を返す。明るさはダークテーマでは高め、ライトテーマでは低めにする。空・null・「-」なら灰色を返す。',NULL);
-INSERT INTO "ResultPalette"("method","signature","behavior","利用_UiTheme") VALUES('tint','Color tint(Color color, Color background, float alpha)','色を背景色に指定の割合で混ぜた不透明な色を返す。割合が1に近いほど元の色、0に近いほど背景色になる。',NULL);
+INSERT INTO "ResultPalette"("method","signature","behavior","利用_ClearLamp","利用_UiTheme") VALUES('lampColor','Color lampColor(String lamp)','クリアランプ名（大文字小文字・前後の空白は無視）に対応する色を ClearLamp から返す。未知の名前やnullは灰色を返し、ライトテーマでは明るすぎる色を暗くして返す。',NULL,NULL);
+INSERT INTO "ResultPalette"("method","signature","behavior","利用_ClearLamp","利用_UiTheme") VALUES('rankColor','Color rankColor(String rank)','DJランク（MAX・AAA〜F、大文字小文字は無視）に対応する色を返す。未知の値やnullは灰色を返し、ライトテーマでは明るすぎる色を暗くして返す。',NULL,NULL);
+INSERT INTO "ResultPalette"("method","signature","behavior","利用_ClearLamp","利用_UiTheme") VALUES('stateColor','Color stateColor(String state)','画面種別（Result・Course Result・Play・Music Select・Decide・Config）に対応する色を返す。大文字小文字は区別し前後の空白だけ除く。未知の値は灰色、nullはテーマ補正なしの灰色を返す。',NULL,NULL);
+INSERT INTO "ResultPalette"("method","signature","behavior","利用_ClearLamp","利用_UiTheme") VALUES('symbolColor','Color symbolColor(String symbol)','難易度表の記号の文字列のハッシュ値から色相を決め、記号ごとに異なる色を返す。明るさはダークテーマでは高め、ライトテーマでは低めにする。空・null・「-」なら灰色を返す。',NULL,NULL);
+INSERT INTO "ResultPalette"("method","signature","behavior","利用_ClearLamp","利用_UiTheme") VALUES('tint','Color tint(Color color, Color background, float alpha)','色を背景色に指定の割合で混ぜた不透明な色を返す。割合が1に近いほど元の色、0に近いほど背景色になる。',NULL,NULL);
 
 INSERT INTO "ScreenshotDatabase"("method","signature","behavior","利用_AppPaths","生成_ScreenshotRecord","利用_TableLookupService") VALUES('close','void close()','DB接続を閉じる。',NULL,NULL,NULL);
 INSERT INTO "ScreenshotDatabase"("method","signature","behavior","利用_AppPaths","生成_ScreenshotRecord","利用_TableLookupService") VALUES('delete','void delete(long id)','指定IDの行を削除する。',NULL,NULL,NULL);
@@ -1441,7 +1531,7 @@ INSERT INTO "ScreenshotScanner"("method","signature","behavior","利用_Filename
 List<ScreenshotEntry> scan(Path directory, PlayerKind player)','フォルダ直下の PNG ファイルを、ファイル名を解析したスクショ情報にして撮影時刻の新しい順(時刻不明は最後、同時刻はファイル名の逆順)で返す。フォルダが null か存在しなければ空の一覧を返す。1引数版は beatoraja の命名規則で、2引数版は指定したプレイヤーの命名規則で解析する。',NULL,NULL,NULL);
 
 INSERT INTO "ScreenshotWatcher"("method","signature","behavior","利用_AppLogging","利用_FilenameParser","利用_PlayerKind","利用_ScreenshotEntry") VALUES('close','void close()','監視を止め、監視用スレッドも終わらせる。',NULL,NULL,NULL,NULL);
-INSERT INTO "ScreenshotWatcher"("method","signature","behavior","利用_AppLogging","利用_FilenameParser","利用_PlayerKind","利用_ScreenshotEntry") VALUES('start','void start(Path directory, PlayerKind player, Listener listener)','前の監視を止めてから、指定フォルダのファイル作成を監視し始める。裏スレッドが1秒ごとに通知を確かめ、拡張子が png の新規ファイルは中身が書かれるまで最大2秒待ってから、指定したプレイヤーの命名規則で解析して通知先に渡す。',NULL,NULL,NULL,NULL);
+INSERT INTO "ScreenshotWatcher"("method","signature","behavior","利用_AppLogging","利用_FilenameParser","利用_PlayerKind","利用_ScreenshotEntry") VALUES('start','void start(Path directory, PlayerKind player, Listener listener)','前の監視を止めてから、指定フォルダのファイル作成を監視し始める。裏スレッドが1秒ごとに通知を確かめ、拡張子が png の新規ファイルは中身が書かれるまで最大2秒待って(読み取りに失敗しても待ち続ける)から、指定したプレイヤーの命名規則で解析して通知先に渡す。通知先で例外が出てもログに残して監視を続ける。',NULL,NULL,NULL,NULL);
 INSERT INTO "ScreenshotWatcher"("method","signature","behavior","利用_AppLogging","利用_FilenameParser","利用_PlayerKind","利用_ScreenshotEntry") VALUES('stop','void stop()','監視ループを止める印を立て、OS のファイル監視を閉じる。スレッド自体は残るので、再び start できる。',NULL,NULL,NULL,NULL);
 
 

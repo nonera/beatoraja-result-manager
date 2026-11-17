@@ -23,6 +23,8 @@ public class DiscordWebhookService {
     private static final Logger LOG = AppLogging.get(DiscordWebhookService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String BOUNDARY_PREFIX = "----BeatorajaScreenshot";
+    /** Discord's per-message attachment limit. */
+    public static final int MAX_IMAGES_PER_POST = 10;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20))
@@ -35,8 +37,8 @@ public class DiscordWebhookService {
         if (imagePaths == null || imagePaths.isEmpty()) {
             return PostResult.failed("画像が選択されていません。");
         }
-        if (imagePaths.size() > 10) {
-            return PostResult.failed("Discord は最大10枚まで送信できます。");
+        if (imagePaths.size() > MAX_IMAGES_PER_POST) {
+            return PostResult.failed("Discord は最大" + MAX_IMAGES_PER_POST + "枚まで送信できます。");
         }
 
         try {
@@ -75,10 +77,30 @@ public class DiscordWebhookService {
             Path imagePath = imagePaths.get(i);
             String fileName = imagePath.getFileName().toString();
             byte[] bytes = Files.readAllBytes(imagePath);
-            builder.addFilePart("files[" + i + "]", fileName, "image/png", bytes);
+            builder.addFilePart("files[" + i + "]", headerSafeFileName(fileName), contentType(fileName), bytes);
         }
 
         return builder.build();
+    }
+
+    /** The image media type for {@code fileName}'s extension; PNG when unknown, as screenshots are. */
+    static String contentType(String fileName) {
+        String lower = fileName.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".webp")) {
+            return "image/webp";
+        }
+        return "image/png";
+    }
+
+    /** {@code fileName} with what would break the quoted filename="…" header (quotes, line breaks) replaced. */
+    static String headerSafeFileName(String fileName) {
+        return fileName.replace("\"", "'").replace("\r", " ").replace("\n", " ");
     }
 
     private String extractMessageId(String body) {

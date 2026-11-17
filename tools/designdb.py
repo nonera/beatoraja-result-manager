@@ -390,7 +390,11 @@ class Cli:
         d = DesignBook(path)
         try:
             if cmd == "apply":
-                text = sys.stdin.read() if argv[1] == "-" else Path(argv[1]).read_text(encoding="utf-8-sig")
+                if argv[1] == "-":
+                    sys.stdin.reconfigure(encoding="utf-8")
+                    text = sys.stdin.read()
+                else:
+                    text = Path(argv[1]).read_text(encoding="utf-8-sig")
                 d.apply(json.loads(text))
             elif cmd == "status":
                 for n in argv[1:-1]:

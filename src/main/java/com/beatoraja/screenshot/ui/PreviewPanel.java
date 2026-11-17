@@ -6,9 +6,11 @@ import com.beatoraja.screenshot.ui.theme.Badge;
 import com.beatoraja.screenshot.ui.theme.CardPanel;
 import com.beatoraja.screenshot.ui.theme.ResultPalette;
 import com.beatoraja.screenshot.ui.theme.UiTheme;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import javax.imageio.ImageIO;
 import javax.swing.Box;
+import javax.swing.ImageIcon;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -26,7 +28,6 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics2D;
-import java.awt.Image;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -36,10 +37,17 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Shows the currently selected screenshot(s): a scrollable list of full-size thumbnail
@@ -64,6 +72,26 @@ public class PreviewPanel extends JPanel {
     private static final int AUTO_SCROLL_EDGE = 30;
     private static final int AUTO_SCROLL_STEP = 16;
     private static final int ORDER_ROW_HEIGHT = 34;
+    private static final int PREVIEW_MAX_HEIGHT = 260;
+    /** Space held for an image still loading: the height of a 16:9 screenshot at preview width. */
+    private static final int PREVIEW_PLACEHOLDER_HEIGHT = PREVIEW_WIDTH * 9 / 16;
+    private static final int PREVIEW_CACHE_SIZE = 64;
+    private static final Logger LOG = AppLogging.get(PreviewPanel.class);
+
+    /** Scaled previews, least recently used dropped first. Touched on the EDT only. */
+    private final Map<String, ImageIcon> previewCache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, ImageIcon> eldest) {
+            return size() > PREVIEW_CACHE_SIZE;
+        }
+    };
+    private final ExecutorService previewLoader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "preview-loader");
+        thread.setDaemon(true);
+        return thread;
+    });
+    /** Bumped on every showEntries; a load finishing under an older value is stale. */
+    private int previewGeneration;
 
     private PostOrderChangeListener postOrderChangeListener;
     private Map<String, String> clearLampLabels = Map.of();
@@ -165,6 +193,7 @@ public class PreviewPanel extends JPanel {
      * @param messagesByFile current post text for each entry, keyed by {@link ScreenshotEntry#getFileName()}
      */
     public void showEntries(List<ScreenshotEntry> entries, Map<String, String> messagesByFile) {
+        previewGeneration++;
         previewListPanel.removeAll();
         orderListPanel.removeAll();
         updateHeader(entries);
@@ -257,8 +286,9 @@ public class PreviewPanel extends JPanel {
         controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
         controls.add(orderLabel);
 
-        JLabel thumb = new JLabel(loadScaledImage(entry, PREVIEW_WIDTH, 260));
+        JLabel thumb = new JLabel();
         thumb.setToolTipText(entry.getFileName());
+        showPreviewImage(thumb, entry);
 
         JLabel captionPreview = new JLabel(previewText(text));
         captionPreview.setForeground(UiTheme.mutedText());
@@ -433,9 +463,49 @@ public class PreviewPanel extends JPanel {
         return button;
     }
 
-    private ImageIconWrapper loadScaledImage(ScreenshotEntry entry, int maxWidth, int maxHeight) {
+    /**
+     * Sets {@code thumb}'s image from the cache, or reserves its space and reads the file on
+     * the loader thread. Results for a selection that has since been replaced are dropped.
+     */
+    private void showPreviewImage(JLabel thumb, ScreenshotEntry entry) {
+        Path path = entry.getFilePath();
+        String key = previewCacheKey(path);
+        ImageIcon cached = previewCache.get(key);
+        if (cached != null) {
+            thumb.setIcon(cached);
+            return;
+        }
+        thumb.setPreferredSize(new Dimension(PREVIEW_WIDTH, PREVIEW_PLACEHOLDER_HEIGHT));
+        int generation = previewGeneration;
+        previewLoader.submit(() -> {
+            ImageIcon icon = loadScaledImage(path, PREVIEW_WIDTH, PREVIEW_MAX_HEIGHT);
+            SwingUtilities.invokeLater(() -> {
+                if (icon != null) {
+                    previewCache.put(key, icon);
+                }
+                if (generation != previewGeneration) {
+                    return;
+                }
+                thumb.setPreferredSize(null);
+                thumb.setIcon(icon);
+                previewListPanel.revalidate();
+                previewListPanel.repaint();
+            });
+        });
+    }
+
+    /** Path plus modification time, so an overwritten screenshot is read again. */
+    private static String previewCacheKey(Path path) {
         try {
-            BufferedImage original = ImageIO.read(entry.getFilePath().toFile());
+            return path + "|" + Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return path.toString();
+        }
+    }
+
+    private static ImageIcon loadScaledImage(Path path, int maxWidth, int maxHeight) {
+        try {
+            BufferedImage original = ImageIO.read(path.toFile());
             if (original == null) {
                 return null;
             }
@@ -452,15 +522,10 @@ public class PreviewPanel extends JPanel {
             graphics.setClip(new RoundRectangle2D.Float(0, 0, width, height, 10, 10));
             graphics.drawImage(original, 0, 0, width, height, null);
             graphics.dispose();
-            return new ImageIconWrapper(scaled);
-        } catch (IOException e) {
+            return new ImageIcon(scaled);
+        } catch (IOException | RuntimeException e) {
+            LOG.log(Level.FINE, "Failed to load preview image " + path, e);
             return null;
-        }
-    }
-
-    private static final class ImageIconWrapper extends javax.swing.ImageIcon {
-        ImageIconWrapper(Image image) {
-            super(image);
         }
     }
 }

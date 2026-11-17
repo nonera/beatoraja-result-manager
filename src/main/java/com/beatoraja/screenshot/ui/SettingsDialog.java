@@ -444,7 +444,10 @@ public class SettingsDialog extends JDialog {
         beatorajaDirField.setText(config.getBeatorajaDirectory());
         playerKindCombo.setSelectedItem(config.playerKind());
         updatePlayerKindLabels();
-        webhookTableModel.setRows(new ArrayList<>(config.getDiscordWebhooks()));
+        // Copies: the table edits rows in place, and only saveSettings may change the config.
+        webhookTableModel.setRows(config.getDiscordWebhooks().stream()
+                .map(AppConfig.DiscordWebhookEntry::copy)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
         clearLampLabelTableModel.setOverrides(config.getClearLampLabels());
         clearLampLabelTableModel.setShortOverrides(config.getClearLampShortLabels());
         clearLampLabelTableModel.setGroupedVisibility(config.getClearLampGroupedVisibility());
@@ -718,7 +721,7 @@ public class SettingsDialog extends JDialog {
             String type = canonicalTypes.get(rowIndex);
             if (columnIndex == 3) {
                 boolean shown = Boolean.TRUE.equals(aValue);
-                if (shown == !ClearLampLabels.DEFAULT_GROUPED_HIDDEN.contains(type)) {
+                if (shown == ClearLampLabels.isShownInGroupedPostByDefault(type)) {
                     groupedVisibility.remove(type);
                 } else {
                     groupedVisibility.put(type, shown);
@@ -729,7 +732,7 @@ public class SettingsDialog extends JDialog {
             String text = aValue == null ? "" : String.valueOf(aValue).trim();
             if (columnIndex == 2) {
                 // Blank or the default itself: keep following the default.
-                if (text.isBlank() || text.equals(ClearLampLabels.DEFAULT_SHORT_LABELS.get(type))) {
+                if (text.isBlank() || text.equals(ClearLampLabels.defaultShortName(type))) {
                     shortOverrides.remove(type);
                 } else {
                     shortOverrides.put(type, text);
