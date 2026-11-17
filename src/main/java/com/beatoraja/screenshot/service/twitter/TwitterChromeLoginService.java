@@ -154,8 +154,8 @@ public class TwitterChromeLoginService {
                 if (!browserProcess.isAlive()) {
                     throw new IOException("Cookie 取得用ブラウザが予期せず終了しました");
                 }
-                try (ChromiumDevToolsClient client = new ChromiumDevToolsClient(debugPort)) {
-                    TwitterCookies cookies = client.readTwitterCookies();
+                try {
+                    TwitterCookies cookies = new ChromiumDevToolsClient(debugPort).readTwitterCookies();
                     if (cookies.isComplete()) {
                         return cookies;
                     }

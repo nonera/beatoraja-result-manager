@@ -87,7 +87,7 @@ public final class ResultPalette {
             return color;
         }
         Color adapted = color;
-        while (relativeLuminance(adapted) > 0.55f) {
+        while (UiTheme.luminance(adapted) > 0.55f) {
             adapted = new Color(
                     Math.round(adapted.getRed() * 0.78f),
                     Math.round(adapted.getGreen() * 0.78f),
@@ -97,7 +97,4 @@ public final class ResultPalette {
         return adapted;
     }
 
-    private static float relativeLuminance(Color color) {
-        return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
-    }
 }

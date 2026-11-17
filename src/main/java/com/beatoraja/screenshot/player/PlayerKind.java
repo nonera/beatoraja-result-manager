@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.player;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Which BMS player the app works with. Chosen in the settings (people do not run beatoraja and
@@ -9,8 +10,7 @@ import java.nio.file.Path;
  */
 public enum PlayerKind {
     BEATORAJA("beatoraja", "beatoraja"),
-    BMZ("bmz", "BMZ Player"),
-    UNKNOWN("", "不明");
+    BMZ("bmz", "BMZ Player");
 
     private final String configKey;
     private final String displayName;
@@ -34,16 +34,16 @@ public enum PlayerKind {
         return displayName;
     }
 
-    /** The kind stored as {@code key}, or {@link #UNKNOWN} for a blank or unrecognized value. */
-    public static PlayerKind fromConfigKey(String key) {
+    /** The kind stored as {@code key}; empty for a blank or unrecognized value (configs saved before the setting). */
+    public static Optional<PlayerKind> fromConfigKey(String key) {
         if (key != null) {
             for (PlayerKind kind : values()) {
-                if (kind != UNKNOWN && kind.configKey.equalsIgnoreCase(key.trim())) {
-                    return kind;
+                if (kind.configKey.equalsIgnoreCase(key.trim())) {
+                    return Optional.of(kind);
                 }
             }
         }
-        return UNKNOWN;
+        return Optional.empty();
     }
 
     /**
@@ -70,18 +70,19 @@ public enum PlayerKind {
     /**
      * beatoraja folders carry {@code config_sys.json}; BMZ Player data folders carry
      * {@code config.toml} (also accepted one level down in {@code data/}, i.e. when the
-     * portable install's exe folder is chosen instead of its data folder).
+     * portable install's exe folder is chosen instead of its data folder). Empty when the
+     * folder is missing or looks like neither.
      */
-    public static PlayerKind detect(Path directory) {
+    public static Optional<PlayerKind> detect(Path directory) {
         if (directory == null || !Files.isDirectory(directory)) {
-            return UNKNOWN;
+            return Optional.empty();
         }
         if (Files.isRegularFile(directory.resolve("config_sys.json"))) {
-            return BEATORAJA;
+            return Optional.of(BEATORAJA);
         }
         if (BmzPaths.findDataDirectory(directory) != null) {
-            return BMZ;
+            return Optional.of(BMZ);
         }
-        return UNKNOWN;
+        return Optional.empty();
     }
 }

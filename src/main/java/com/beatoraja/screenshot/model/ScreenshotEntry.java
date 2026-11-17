@@ -64,12 +64,6 @@ public class ScreenshotEntry {
         return rawTableFolder;
     }
 
-    /** @deprecated use {@link #getRawTableFolder()} */
-    @Deprecated
-    public String getTableLevel() {
-        return rawTableFolder;
-    }
-
     public String getLevel() {
         return level;
     }

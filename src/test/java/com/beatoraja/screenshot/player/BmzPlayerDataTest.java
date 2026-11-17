@@ -33,10 +33,10 @@ class BmzPlayerDataTest {
         Path bmzExe = Files.createDirectories(tempDir.resolve("bmz/data"));
         Files.writeString(bmzExe.resolve("config.toml"), "version = 1\n");
 
-        assertEquals(PlayerKind.BEATORAJA, PlayerKind.detect(beatoraja));
-        assertEquals(PlayerKind.BMZ, PlayerKind.detect(bmzExe));
-        assertEquals(PlayerKind.BMZ, PlayerKind.detect(tempDir.resolve("bmz")));
-        assertEquals(PlayerKind.UNKNOWN, PlayerKind.detect(tempDir));
+        assertEquals(java.util.Optional.of(PlayerKind.BEATORAJA), PlayerKind.detect(beatoraja));
+        assertEquals(java.util.Optional.of(PlayerKind.BMZ), PlayerKind.detect(bmzExe));
+        assertEquals(java.util.Optional.of(PlayerKind.BMZ), PlayerKind.detect(tempDir.resolve("bmz")));
+        assertEquals(java.util.Optional.empty(), PlayerKind.detect(tempDir));
     }
 
     @Test

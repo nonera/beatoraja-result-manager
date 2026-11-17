@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,7 +43,8 @@ public class PostTextFormat {
         names.put(RATE, "スコアレート");
         names.put(EX_SCORE, "EXスコア");
         names.put(RANK_DIFF, "区切りからの差分");
-        ITEM_DISPLAY_NAMES = Map.copyOf(names);
+        // Map.copyOf would lose the insertion order the comment above promises.
+        ITEM_DISPLAY_NAMES = Collections.unmodifiableMap(names);
         ITEM_KEYS = List.copyOf(names.keySet());
     }
 

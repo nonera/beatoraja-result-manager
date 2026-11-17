@@ -544,12 +544,7 @@ public class SettingsDialog extends JDialog {
     private void checkTwitterAuth() {
         twitterStatusLabel.setText("確認中...");
         new Thread(() -> {
-            TwitterAuthService authService = new TwitterAuthService(config);
-            ClixService.AuthResult result = authService.verifyStoredSession();
-            if (!result.success() && authService.refreshSilently()) {
-                result = authService.verifyStoredSession();
-            }
-            ClixService.AuthResult finalResult = result;
+            ClixService.AuthResult finalResult = new TwitterAuthService(config).verifyOrRefresh();
             SwingUtilities.invokeLater(() ->
                     twitterStatusLabel.setText(finalResult.message()));
         }, "twitter-auth-check-settings").start();

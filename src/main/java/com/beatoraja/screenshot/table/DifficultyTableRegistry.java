@@ -1,9 +1,5 @@
 package com.beatoraja.screenshot.table;
 
-import com.beatoraja.screenshot.config.AppConfig;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,8 +13,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class DifficultyTableRegistry {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final List<String> knownTags = new ArrayList<>();
     private final List<String> tableKeys = new ArrayList<>();
@@ -57,16 +51,6 @@ public class DifficultyTableRegistry {
             }
         }
         this.notationRulesByTag = map;
-    }
-
-    public void loadFromBeatoraja(Path beatorajaDirectory) throws IOException {
-        clear();
-        if (beatorajaDirectory == null || !Files.isDirectory(beatorajaDirectory)) {
-            return;
-        }
-
-        Path tablePath = resolveTablePath(beatorajaDirectory);
-        loadFromResolvedTablePath(tablePath);
     }
 
     public void loadFromTableDirectory(Path tablePath) throws IOException {
@@ -109,21 +93,6 @@ public class DifficultyTableRegistry {
      */
     public int getLoadedFileCount() {
         return loadedFileCount;
-    }
-
-    private Path resolveTablePath(Path beatorajaDirectory) throws IOException {
-        Path configFile = beatorajaDirectory.resolve("config_sys.json");
-        if (!Files.exists(configFile)) {
-            return beatorajaDirectory.resolve("table");
-        }
-
-        JsonNode root = MAPPER.readTree(configFile.toFile());
-        String tablePathValue = root.path("tablepath").asText("table");
-        Path tablePath = Path.of(tablePathValue);
-        if (tablePath.isAbsolute()) {
-            return tablePath;
-        }
-        return beatorajaDirectory.resolve(tablePath);
     }
 
     private void registerTable(BmtTableReader.BmtTableData table) {
@@ -301,7 +270,7 @@ public class DifficultyTableRegistry {
 
     private static String resolveSymbolOverride(TableNotationRule rule, String symbol) {
         Map<String, String> overrides = rule.symbolOverrides();
-        String tableWide = overrides.get(AppConfig.TableNotationRule.TABLE_WIDE_OVERRIDE_KEY);
+        String tableWide = overrides.get(TableNotationRule.TABLE_WIDE_OVERRIDE_KEY);
         if (tableWide != null && !tableWide.isBlank()) {
             return tableWide;
         }
@@ -442,6 +411,9 @@ public class DifficultyTableRegistry {
      * string key; legacy per-symbol keys are still honored as a fallback.
      */
     public record TableNotationRule(String tableTag, boolean alwaysInclude, Map<String, String> symbolOverrides) {
+        /** The symbolOverrides key whose value replaces the symbol for every level of the table. */
+        public static final String TABLE_WIDE_OVERRIDE_KEY = "";
+
         public TableNotationRule {
             symbolOverrides = symbolOverrides == null ? Map.of() : symbolOverrides;
         }

@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -51,8 +52,14 @@ public class AppConfig {
     private PostTextFormat postTextFormat = PostTextFormat.defaults();
     private String twitterBrowser = "";
     private String twitterChromeProfile = "";
-    private String twitterAuthToken = "";
-    private String twitterCt0 = "";
+    /**
+     * X tokens as configs before the cookie map stored them. Only ever read from such a file:
+     * load moves them into {@link #twitterCookies} and they are never written back.
+     */
+    @JsonProperty(value = "twitterAuthToken", access = JsonProperty.Access.WRITE_ONLY)
+    private String legacyTwitterAuthToken = "";
+    @JsonProperty(value = "twitterCt0", access = JsonProperty.Access.WRITE_ONLY)
+    private String legacyTwitterCt0 = "";
     private Map<String, String> twitterCookies = new LinkedHashMap<>();
     private Map<String, String> clearLampLabels = new LinkedHashMap<>();
     /** Overrides of {@link ClearLampLabels#DEFAULT_SHORT_LABELS}, keyed like {@link #clearLampLabels}. */
@@ -66,9 +73,7 @@ public class AppConfig {
             return new AppConfig();
         }
         try {
-            AppConfig config = MAPPER.readValue(configFile.toFile(), AppConfig.class);
-            config.normalizeTwitterCookies();
-            return config;
+            return parse(Files.readAllBytes(configFile));
         } catch (IOException e) {
             LOG.log(Level.WARNING, "Failed to load config from " + configFile.toAbsolutePath(), e);
             return new AppConfig();
@@ -77,7 +82,7 @@ public class AppConfig {
 
     /** Writes the config through a temporary file, so a crash mid-save cannot corrupt it. */
     public void save() throws IOException {
-        AtomicFiles.write(AppPaths.configFile(), MAPPER.writeValueAsBytes(this));
+        AtomicFiles.write(AppPaths.configFile(), toJson());
     }
 
     public boolean isFirstRunCompleted() {
@@ -125,11 +130,9 @@ public class AppConfig {
      * what the player-data folder looks like, and to beatoraja when that says nothing.
      */
     public PlayerKind playerKind() {
-        PlayerKind kind = PlayerKind.fromConfigKey(player);
-        if (kind != PlayerKind.UNKNOWN) {
-            return kind;
-        }
-        return PlayerKind.detect(resolveBeatorajaDirectory()) == PlayerKind.BMZ ? PlayerKind.BMZ : PlayerKind.BEATORAJA;
+        return PlayerKind.fromConfigKey(player)
+                .or(() -> PlayerKind.detect(resolveBeatorajaDirectory()))
+                .orElse(PlayerKind.BEATORAJA);
     }
 
     public void setPlayerKind(PlayerKind kind) {
@@ -293,44 +296,16 @@ public class AppConfig {
 
     public void setTwitterCookies(Map<String, String> twitterCookies) {
         this.twitterCookies = twitterCookies == null ? new LinkedHashMap<>() : new LinkedHashMap<>(twitterCookies);
-        this.twitterAuthToken = "";
-        this.twitterCt0 = "";
     }
 
-    public String getTwitterAuthToken() {
-        String fromMap = twitterCookies.get("auth_token");
-        if (fromMap != null && !fromMap.isBlank()) {
-            return fromMap;
-        }
-        return twitterAuthToken;
+    /** The saved X {@code auth_token} cookie, or "" when not logged in. */
+    public String twitterAuthToken() {
+        return twitterCookies.getOrDefault("auth_token", "");
     }
 
-    public void setTwitterAuthToken(String twitterAuthToken) {
-        String value = twitterAuthToken == null ? "" : twitterAuthToken;
-        if (value.isBlank()) {
-            twitterCookies.remove("auth_token");
-        } else {
-            twitterCookies.put("auth_token", value);
-        }
-        this.twitterAuthToken = "";
-    }
-
-    public String getTwitterCt0() {
-        String fromMap = twitterCookies.get("ct0");
-        if (fromMap != null && !fromMap.isBlank()) {
-            return fromMap;
-        }
-        return twitterCt0;
-    }
-
-    public void setTwitterCt0(String twitterCt0) {
-        String value = twitterCt0 == null ? "" : twitterCt0;
-        if (value.isBlank()) {
-            twitterCookies.remove("ct0");
-        } else {
-            twitterCookies.put("ct0", value);
-        }
-        this.twitterCt0 = "";
+    /** The saved X {@code ct0} cookie, or "" when not logged in. */
+    public String twitterCt0() {
+        return twitterCookies.getOrDefault("ct0", "");
     }
 
     /** Custom clear lamp display names ("俗称"), keyed by the canonical, upper-cased clear type text. */
@@ -342,7 +317,7 @@ public class AppConfig {
         this.clearLampLabels = clearLampLabels == null ? new LinkedHashMap<>() : new LinkedHashMap<>(clearLampLabels);
     }
 
-    /** The custom label for {@code clearType} if one is configured, else {@code clearType} unchanged. */
+    /** Short names for the lamp-grouped post text that differ from the defaults, keyed like {@link #getClearLampLabels()}. */
     public Map<String, String> getClearLampShortLabels() {
         return clearLampShortLabels;
     }
@@ -368,29 +343,39 @@ public class AppConfig {
     }
 
     public boolean hasManualTwitterAuth() {
-        return !getTwitterAuthToken().isBlank() && !getTwitterCt0().isBlank();
+        return !twitterAuthToken().isBlank() && !twitterCt0().isBlank();
     }
 
     public void clearTwitterAuth() {
         twitterCookies.clear();
-        twitterAuthToken = "";
-        twitterCt0 = "";
     }
 
-    private void normalizeTwitterCookies() {
+    /** Reads a config file's contents, moving old-format X tokens into the cookie map. */
+    static AppConfig parse(byte[] json) throws IOException {
+        AppConfig config = MAPPER.readValue(json, AppConfig.class);
+        config.migrateLegacyTwitterTokens();
+        return config;
+    }
+
+    /** Bytes as {@link #save()} writes them. */
+    byte[] toJson() throws IOException {
+        return MAPPER.writeValueAsBytes(this);
+    }
+
+    private void migrateLegacyTwitterTokens() {
         if (twitterCookies == null) {
             twitterCookies = new LinkedHashMap<>();
         }
         if (twitterCookies.isEmpty()) {
-            if (twitterAuthToken != null && !twitterAuthToken.isBlank()) {
-                twitterCookies.put("auth_token", twitterAuthToken);
+            if (legacyTwitterAuthToken != null && !legacyTwitterAuthToken.isBlank()) {
+                twitterCookies.put("auth_token", legacyTwitterAuthToken);
             }
-            if (twitterCt0 != null && !twitterCt0.isBlank()) {
-                twitterCookies.put("ct0", twitterCt0);
+            if (legacyTwitterCt0 != null && !legacyTwitterCt0.isBlank()) {
+                twitterCookies.put("ct0", legacyTwitterCt0);
             }
         }
-        twitterAuthToken = "";
-        twitterCt0 = "";
+        legacyTwitterAuthToken = "";
+        legacyTwitterCt0 = "";
     }
 
     public static class DiscordWebhookEntry {
@@ -441,7 +426,8 @@ public class AppConfig {
      */
     public static class TableNotationRule {
         /** Map key for a table-wide symbol override (replaces the .bmt tag prefix). */
-        public static final String TABLE_WIDE_OVERRIDE_KEY = "";
+        public static final String TABLE_WIDE_OVERRIDE_KEY =
+                com.beatoraja.screenshot.table.DifficultyTableRegistry.TableNotationRule.TABLE_WIDE_OVERRIDE_KEY;
         private String tableTag = "";
         private boolean alwaysInclude;
         private Map<String, String> symbolOverrides = new LinkedHashMap<>();

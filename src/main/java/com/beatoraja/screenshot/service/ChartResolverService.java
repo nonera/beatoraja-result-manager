@@ -35,7 +35,7 @@ public class ChartResolverService implements AutoCloseable {
     private PlayLogSource playLogService;
     private SongDatabaseService songDatabaseService;
     private Path beatorajaDirectory;
-    private PlayerKind playerKind = PlayerKind.UNKNOWN;
+    private PlayerKind playerKind = PlayerKind.BEATORAJA;
     /** The play-history and song databases opened by the last reload, for {@link #reloadPlayData()}. */
     private Path playLogDb;
     private Path songDb;
