@@ -57,6 +57,8 @@ public class ScreenshotWatcher implements AutoCloseable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
+            } catch (java.nio.file.ClosedWatchServiceException e) {
+                return; // stop() closed the service
             }
 
             if (key == null) {
@@ -71,25 +73,41 @@ public class ScreenshotWatcher implements AutoCloseable {
                 if (!created.getFileName().toString().toLowerCase().endsWith(".png")) {
                     continue;
                 }
-                waitForFile(created);
-                listener.onScreenshotAdded(FilenameParser.parse(created, player));
+                if (!waitForFile(created)) {
+                    return;
+                }
+                try {
+                    listener.onScreenshotAdded(FilenameParser.parse(created, player));
+                } catch (RuntimeException e) {
+                    // One bad file or listener failure must not end the watch for later screenshots.
+                    LOG.log(Level.WARNING, "Failed to handle new screenshot " + created, e);
+                }
             }
             key.reset();
         }
     }
 
-    private void waitForFile(Path path) {
+    /**
+     * Waits up to 2 seconds for the player to finish writing {@code path}. A read failure (the
+     * file is still locked, say) only means "not ready yet". Returns false when interrupted.
+     */
+    private boolean waitForFile(Path path) {
         for (int i = 0; i < 20; i++) {
             try {
                 if (Files.exists(path) && Files.size(path) > 0) {
-                    return;
+                    return true;
                 }
+            } catch (IOException e) {
+                LOG.log(Level.FINE, "Screenshot not readable yet: " + path, e);
+            }
+            try {
                 Thread.sleep(100);
-            } catch (IOException | InterruptedException e) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
             }
         }
+        return true;
     }
 
     public void stop() {

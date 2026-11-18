@@ -33,10 +33,10 @@ class BmzPlayerDataTest {
         Path bmzExe = Files.createDirectories(tempDir.resolve("bmz/data"));
         Files.writeString(bmzExe.resolve("config.toml"), "version = 1\n");
 
-        assertEquals(PlayerKind.BEATORAJA, PlayerKind.detect(beatoraja));
-        assertEquals(PlayerKind.BMZ, PlayerKind.detect(bmzExe));
-        assertEquals(PlayerKind.BMZ, PlayerKind.detect(tempDir.resolve("bmz")));
-        assertEquals(PlayerKind.UNKNOWN, PlayerKind.detect(tempDir));
+        assertEquals(java.util.Optional.of(PlayerKind.BEATORAJA), PlayerKind.detect(beatoraja));
+        assertEquals(java.util.Optional.of(PlayerKind.BMZ), PlayerKind.detect(bmzExe));
+        assertEquals(java.util.Optional.of(PlayerKind.BMZ), PlayerKind.detect(tempDir.resolve("bmz")));
+        assertEquals(java.util.Optional.empty(), PlayerKind.detect(tempDir));
     }
 
     @Test
@@ -98,9 +98,9 @@ class BmzPlayerDataTest {
         }
 
         BmzPlayLogService service = new BmzPlayLogService(scoreDb);
-        List<PlayerPlayLogService.PlayLogEntry> found = service.findNear(at(1320), null);
+        List<PlayLogEntry> found = service.findNear(at(1320), null);
         assertEquals(1, found.size());
-        PlayerPlayLogService.PlayLogEntry play = found.get(0);
+        PlayLogEntry play = found.get(0);
         assertEquals(SHA, play.sha256());
         assertEquals(6, play.clearId());
         assertNotNull(play.score());

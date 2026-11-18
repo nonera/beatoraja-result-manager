@@ -14,8 +14,11 @@ import javax.swing.border.EmptyBorder;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class TwitterLoginDialog extends JDialog {
 
@@ -26,7 +29,9 @@ public class TwitterLoginDialog extends JDialog {
     private final JButton completeButton = new JButton("ログイン完了");
     private final JButton cancelButton = new JButton("キャンセル");
     private final CountDownLatch loginLatch = new CountDownLatch(1);
-    private ClixService.AuthResult result = ClixService.AuthResult.failed("未実行");
+    /** Written by the login thread, read on the EDT once the dialog closes. */
+    private final AtomicReference<ClixService.AuthResult> result =
+            new AtomicReference<>(ClixService.AuthResult.failed("ログインをキャンセルしました"));
 
     public TwitterLoginDialog(Window owner, AppConfig config) {
         super(owner, "Twitter ログイン", ModalityType.APPLICATION_MODAL);
@@ -54,7 +59,15 @@ public class TwitterLoginDialog extends JDialog {
         root.add(actions, BorderLayout.SOUTH);
 
         setContentPane(root);
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        // Closing with the window button is a cancel too: it must release the login thread,
+        // which otherwise waits for "ログイン完了" forever.
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                cancelLogin();
+            }
+        });
     }
 
     private void confirmLogin() {
@@ -73,12 +86,12 @@ public class TwitterLoginDialog extends JDialog {
     public ClixService.AuthResult showAndLogin() {
         new Thread(this::runLogin, "twitter-login").start();
         setVisible(true);
-        return result;
+        return result.get();
     }
 
     private void runLogin() {
         TwitterAuthService authService = new TwitterAuthService(config);
-        result = authService.loginInteractive(new TwitterAuthService.LoginProgressListener() {
+        ClixService.AuthResult outcome = authService.loginInteractive(new TwitterAuthService.LoginProgressListener() {
             @Override
             public void onStatus(String status) {
                 SwingUtilities.invokeLater(() -> statusLabel.setText("<html>" + escapeHtml(status) + "</html>"));
@@ -106,11 +119,14 @@ public class TwitterLoginDialog extends JDialog {
             }
         });
 
+        if (!cancelled.get()) {
+            result.set(outcome);
+        }
         SwingUtilities.invokeLater(() -> {
-            if (result.success()) {
+            if (outcome.success()) {
                 dispose();
             } else if (!cancelled.get()) {
-                statusLabel.setText("<html>" + escapeHtml(result.message()) + "</html>");
+                statusLabel.setText("<html>" + escapeHtml(outcome.message()) + "</html>");
                 completeButton.setEnabled(false);
             }
         });

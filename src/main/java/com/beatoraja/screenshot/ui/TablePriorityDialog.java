@@ -77,10 +77,7 @@ public class TablePriorityDialog extends JDialog {
         JPanel header = new JPanel(new BorderLayout());
         header.add(new JLabel("上にあるほど優先されます。同じ曲が複数の表にある場合、記号・投稿表記は上位の表が優先されます。"
                 + " ドラッグ＆ドロップでも並べ替えられます。"), BorderLayout.NORTH);
-        String countText = "難易度表: " + knownTableCount + " 件"
-                + (loadedFileCount != knownTableCount
-                        ? "（読み込んだ.bmtファイル " + loadedFileCount + " 件を同名/同タグでまとめた結果）"
-                        : "");
+        String countText = DialogParts.tableCountText(knownTableCount, loadedFileCount);
         header.add(new JLabel(countText), BorderLayout.SOUTH);
         root.add(header, BorderLayout.NORTH);
 
@@ -107,10 +104,10 @@ public class TablePriorityDialog extends JDialog {
 
         JPanel moveButtons = new JPanel();
         moveButtons.setLayout(new BoxLayout(moveButtons, BoxLayout.Y_AXIS));
-        moveButtons.add(button("最上位へ", () -> moveTo(0)));
-        moveButtons.add(button("上へ", () -> moveBy(-1)));
-        moveButtons.add(button("下へ", () -> moveBy(1)));
-        moveButtons.add(button("最下位へ", () -> moveTo(model.size() - 1)));
+        moveButtons.add(DialogParts.button("最上位へ", () -> moveTo(0)));
+        moveButtons.add(DialogParts.button("上へ", () -> moveBy(-1)));
+        moveButtons.add(DialogParts.button("下へ", () -> moveBy(1)));
+        moveButtons.add(DialogParts.button("最下位へ", () -> moveTo(model.size() - 1)));
         root.add(moveButtons, BorderLayout.EAST);
 
         JPanel actions = new JPanel();
@@ -131,12 +128,6 @@ public class TablePriorityDialog extends JDialog {
         setContentPane(root);
     }
 
-    private JButton button(String label, Runnable action) {
-        JButton button = new JButton(label);
-        button.setAlignmentX(Component.CENTER_ALIGNMENT);
-        button.addActionListener(e -> action.run());
-        return button;
-    }
 
     private void moveBy(int direction) {
         int index = list.getSelectedIndex();

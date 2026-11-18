@@ -1,5 +1,7 @@
 package com.beatoraja.screenshot.ui.theme;
 
+import com.beatoraja.screenshot.model.ClearLamp;
+
 import java.awt.Color;
 import java.util.Locale;
 import java.util.Map;
@@ -9,19 +11,6 @@ public final class ResultPalette {
 
     private static final Color NEUTRAL = new Color(0x7A828C);
 
-    private static final Map<String, Color> LAMP_COLORS = Map.ofEntries(
-            Map.entry("NO PLAY", new Color(0x6B7280)),
-            Map.entry("FAILED", new Color(0xA8323C)),
-            Map.entry("LIGHT ASSIST EASY CLEAR", new Color(0xB06CE0)),
-            Map.entry("ASSIST EASY CLEAR", new Color(0xB06CE0)),
-            Map.entry("EASY CLEAR", new Color(0x43C46A)),
-            Map.entry("CLEAR", new Color(0x4F8CFF)),
-            Map.entry("HARD CLEAR", new Color(0xE8484F)),
-            Map.entry("EXHARD CLEAR", new Color(0xF2B035)),
-            Map.entry("FULL COMBO", new Color(0x34D6E8)),
-            Map.entry("PERFECT", new Color(0xFFD24A)),
-            Map.entry("MAX", new Color(0xFFE9A8))
-    );
 
     private static final Map<String, Color> RANK_COLORS = Map.ofEntries(
             Map.entry("MAX", new Color(0xFFE9A8)),
@@ -48,7 +37,7 @@ public final class ResultPalette {
     }
 
     public static Color lampColor(String lamp) {
-        return lookup(LAMP_COLORS, lamp);
+        return adaptForTheme(ClearLamp.fromDisplayName(lamp).map(l -> new Color(l.colorRgb())).orElse(NEUTRAL));
     }
 
     public static Color rankColor(String rank) {
@@ -98,7 +87,7 @@ public final class ResultPalette {
             return color;
         }
         Color adapted = color;
-        while (relativeLuminance(adapted) > 0.55f) {
+        while (UiTheme.luminance(adapted) > 0.55f) {
             adapted = new Color(
                     Math.round(adapted.getRed() * 0.78f),
                     Math.round(adapted.getGreen() * 0.78f),
@@ -108,7 +97,4 @@ public final class ResultPalette {
         return adapted;
     }
 
-    private static float relativeLuminance(Color color) {
-        return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
-    }
 }

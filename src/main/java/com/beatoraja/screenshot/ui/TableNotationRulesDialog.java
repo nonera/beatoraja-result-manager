@@ -87,7 +87,7 @@ public class TableNotationRulesDialog extends JDialog {
                 excludeModel.addElement(info);
             }
 
-            String label = info.name().isBlank() ? info.tag() : info.name();
+            String label = DialogParts.tableLabel(info);
             Map<String, String> overrides = symbolOverridesByTag.getOrDefault(info.tag(), Map.of());
             Map<String, List<String>> bySymbol = notationsByTagAndSymbol.getOrDefault(info.tag(), Map.of());
             List<String> allNotations = collectNotations(bySymbol);
@@ -181,10 +181,7 @@ public class TableNotationRulesDialog extends JDialog {
                         + "ダブルクリックか矢印ボタンで移動できます。<br>"
                         + "右は難易度表ごとに1行ずつ、接頭辞の置き換えを設定できます（★と★★が混在する表も1行です）。</html>"),
                 BorderLayout.NORTH);
-        String countText = "難易度表: " + knownTables.size() + " 件"
-                + (loadedFileCount != knownTables.size()
-                        ? "（読み込んだ.bmtファイル " + loadedFileCount + " 件を同名/同タグでまとめた結果）"
-                        : "");
+        String countText = DialogParts.tableCountText(knownTables.size(), loadedFileCount);
         header.add(new JLabel(countText), BorderLayout.SOUTH);
         root.add(header, BorderLayout.NORTH);
 
@@ -193,7 +190,7 @@ public class TableNotationRulesDialog extends JDialog {
             public Component getListCellRendererComponent(JList<?> jList, Object value, int index,
                     boolean isSelected, boolean cellHasFocus) {
                 TableInfo info = (TableInfo) value;
-                String text = info.name().isBlank() ? info.tag() : info.name();
+                String text = DialogParts.tableLabel(info);
                 return super.getListCellRendererComponent(jList, text, index, isSelected, cellHasFocus);
             }
         };

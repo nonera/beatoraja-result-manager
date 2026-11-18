@@ -132,10 +132,10 @@ public final class UiTheme {
         UIManager.put("Table.intercellSpacing", new java.awt.Dimension(0, 0));
         UIManager.put("Table.selectionArc", 6);
         // A muted selection keeps the colored lamp / rank badges legible on the selected row.
-        UIManager.put("Table.selectionBackground", dark ? new Color(0x33456B) : new Color(0xD3E3FF));
-        UIManager.put("Table.selectionForeground", dark ? new Color(0xEAEEF5) : new Color(0x1B1F26));
-        UIManager.put("Table.selectionInactiveBackground", dark ? new Color(0x333841) : new Color(0xE2E6ED));
-        UIManager.put("Table.selectionInactiveForeground", dark ? new Color(0xEAEEF5) : new Color(0x1B1F26));
+        UIManager.put("Table.selectionBackground", themed(0x33456B, 0xD3E3FF));
+        UIManager.put("Table.selectionForeground", themed(0xEAEEF5, 0x1B1F26));
+        UIManager.put("Table.selectionInactiveBackground", themed(0x333841, 0xE2E6ED));
+        UIManager.put("Table.selectionInactiveForeground", themed(0xEAEEF5, 0x1B1F26));
         UIManager.put("TableHeader.height", 30);
         UIManager.put("TableHeader.separatorColor", subtle());
 
@@ -150,19 +150,29 @@ public final class UiTheme {
         UIManager.put("MenuBar.borderColor", subtle());
     }
 
+    /** The dark-theme color or the light-theme one, whichever theme is active. */
+    private static Color themed(int darkRgb, int lightRgb) {
+        return new Color(dark ? darkRgb : lightRgb);
+    }
+
+    /** Perceived brightness of {@code color}, 0 (black) to 1 (white). */
+    public static float luminance(Color color) {
+        return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
+    }
+
     /** Surface color one step above the window background, used for cards. */
     public static Color surface() {
-        return dark ? new Color(0x2B2E33) : new Color(0xF4F6FA);
+        return themed(0x2B2E33, 0xF4F6FA);
     }
 
     /** Hairline border color that reads as a divider in both themes. */
     public static Color subtle() {
-        return dark ? new Color(0x3C4047) : new Color(0xD6DAE1);
+        return themed(0x3C4047, 0xD6DAE1);
     }
 
     /** De-emphasized text color for captions and secondary metadata. */
     public static Color mutedText() {
-        return dark ? new Color(0x9AA1AC) : new Color(0x6B7280);
+        return themed(0x9AA1AC, 0x6B7280);
     }
 
     /**
@@ -187,7 +197,7 @@ public final class UiTheme {
 
     /** Row background used for every other table row. */
     public static Color alternateRow() {
-        return dark ? new Color(0x2A2D32) : new Color(0xF7F8FA);
+        return themed(0x2A2D32, 0xF7F8FA);
     }
 
     private static String resolveUiFontFamily(String preferred) {

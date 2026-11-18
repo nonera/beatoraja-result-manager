@@ -28,6 +28,8 @@ final class ChromiumCdpSession implements AutoCloseable {
     private final AtomicInteger nextId = new AtomicInteger(1);
     private final ConcurrentHashMap<Integer, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
     private WebSocket webSocket;
+    /** Set once the browser end closes or the connection fails; later commands fail at once. */
+    private volatile IOException closedReason;
 
     static ChromiumCdpSession connect(HttpClient httpClient, String webSocketUrl, Duration timeout) throws Exception {
         ChromiumCdpSession session = new ChromiumCdpSession();
@@ -80,15 +82,21 @@ final class ChromiumCdpSession implements AutoCloseable {
                     }
 
                     @Override
+                    public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+                        // The browser was closed: fail waiting commands now rather than at their timeout.
+                        failPending(new IOException("ブラウザとの接続が閉じられました"));
+                        return null;
+                    }
+
+                    @Override
                     public void onError(WebSocket webSocket, Throwable error) {
                         openFuture.completeExceptionally(error);
-                        pending.values().forEach(f -> f.completeExceptionally(error));
-                        pending.clear();
+                        failPending(new IOException("ブラウザとの接続でエラーが起きました: " + error.getMessage(), error));
                     }
                 })
                 .join();
 
-        openFuture.get(timeout.toSeconds(), TimeUnit.SECONDS);
+        openFuture.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         if (webSocket == null) {
             throw new IOException("CDP WebSocket に接続できませんでした");
         }
@@ -98,20 +106,30 @@ final class ChromiumCdpSession implements AutoCloseable {
         int id = nextId.getAndIncrement();
         CompletableFuture<JsonNode> future = new CompletableFuture<>();
         pending.put(id, future);
+        IOException closed = closedReason;
+        if (closed != null) {
+            pending.remove(id);
+            throw closed;
+        }
         String body = MAPPER.writeValueAsString(Map.of("id", id, "method", method, "params", params));
         webSocket.sendText(body, true);
         try {
-            return future.get(timeout.toSeconds(), TimeUnit.SECONDS);
+            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             pending.remove(id);
             throw new IOException(method + " の CDP 応答がタイムアウトしました", e);
         }
     }
 
+    private void failPending(IOException reason) {
+        closedReason = reason;
+        pending.values().forEach(f -> f.completeExceptionally(reason));
+        pending.clear();
+    }
+
     @Override
     public void close() {
-        pending.values().forEach(f -> f.completeExceptionally(new IOException("CDP セッションを終了しました")));
-        pending.clear();
+        failPending(new IOException("CDP セッションを終了しました"));
         if (webSocket != null && !webSocket.isOutputClosed()) {
             webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "done");
         }

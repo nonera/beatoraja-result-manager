@@ -1,6 +1,7 @@
 package com.beatoraja.screenshot.ui.render;
 
 import com.beatoraja.screenshot.ui.theme.UiTheme;
+import com.beatoraja.screenshot.util.AppLogging;
 
 import javax.imageio.ImageIO;
 import javax.swing.Icon;
@@ -11,6 +12,8 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -19,6 +22,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Bounded, lazily populated cache of rounded table thumbnails. Decoding happens on
@@ -28,12 +33,15 @@ public final class ThumbnailCache {
 
     private static final int CAPACITY = 512;
     private static final int ARC = 6;
+    private static final Logger LOG = AppLogging.get(ThumbnailCache.class);
 
     private final int width;
     private final int height;
     private final Runnable repaintCallback;
     private final Map<Path, Icon> cache;
     private final Set<Path> pending = ConcurrentHashMap.newKeySet();
+    /** Files that could not be decoded, with their modification time at that point. */
+    private final Map<Path, Long> failed = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "thumbnail-loader");
         thread.setDaemon(true);
@@ -69,6 +77,10 @@ public final class ThumbnailCache {
         if (cached != null) {
             return cached;
         }
+        Long failedAt = failed.get(path);
+        if (failedAt != null && failedAt == lastModified(path)) {
+            return null; // unreadable and unchanged since: don't decode it again on every repaint
+        }
         if (pending.add(path)) {
             executor.execute(() -> load(path));
         }
@@ -83,10 +95,22 @@ public final class ThumbnailCache {
         Icon icon = render(path);
         if (icon != null) {
             cache.put(path, icon);
+            failed.remove(path);
+        } else {
+            failed.put(path, lastModified(path));
         }
         pending.remove(path);
         if (icon != null) {
             SwingUtilities.invokeLater(repaintCallback);
+        }
+    }
+
+    /** The file's modification time, or -1 if it cannot be read (e.g. it is gone). */
+    private static long lastModified(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return -1;
         }
     }
 
@@ -121,6 +145,7 @@ public final class ThumbnailCache {
             }
             return new ImageIcon(target);
         } catch (Exception e) {
+            LOG.log(Level.FINE, "Failed to load thumbnail " + path, e);
             return null;
         }
     }

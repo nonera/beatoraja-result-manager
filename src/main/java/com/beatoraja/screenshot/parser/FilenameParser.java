@@ -1,13 +1,14 @@
 package com.beatoraja.screenshot.parser;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
-import com.beatoraja.screenshot.player.ClearTypeMapper;
+import com.beatoraja.screenshot.model.ClearLamp;
 import com.beatoraja.screenshot.player.PlayerKind;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,10 +17,6 @@ public final class FilenameParser {
     private static final DateTimeFormatter CAPTURED_AT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
     private static final Pattern FILE_PATTERN = Pattern.compile("^(\\d{8}_\\d{6})(.*)\\.png$", Pattern.CASE_INSENSITIVE);
     private static final Pattern LEVEL_PATTERN = Pattern.compile("^LEVEL(\\d+)(?:\\s+(.*))?$", Pattern.CASE_INSENSITIVE);
-    private static final String[] CLEAR_TYPES = {
-            "LIGHT ASSIST EASY CLEAR", "ASSIST EASY CLEAR", "EASY CLEAR",
-            "EXHARD CLEAR", "HARD CLEAR", "FULL COMBO", "NO PLAY", "FAILED", "CLEAR", "PERFECT", "MAX"
-    };
     private static final String[] RANKS = {"AAA", "AA", "A", "B", "C", "D", "E", "F"};
     /**
      * BMZ Player (v0.5.2+, {@code crates/bmz-player/src/app/screenshot.rs}):
@@ -120,11 +117,11 @@ public final class FilenameParser {
             return new ParsedMetadata("Play", body.substring("Play_".length()), "", "", "", "");
         }
         Matcher resultMatcher = BMZ_RESULT_BODY.matcher(body);
-        Integer clearId = resultMatcher.matches() ? ClearTypeMapper.fromBmzLabel(resultMatcher.group(2)) : null;
-        if (clearId == null) {
+        Optional<ClearLamp> lamp = resultMatcher.matches() ? ClearLamp.fromBmzLabel(resultMatcher.group(2)) : Optional.empty();
+        if (lamp.isEmpty()) {
             return new ParsedMetadata("Result", body, "", "", "", "");
         }
-        return new ParsedMetadata("Result", resultMatcher.group(1), "", "", ClearTypeMapper.toClearName(clearId), "");
+        return new ParsedMetadata("Result", resultMatcher.group(1), "", "", lamp.get().displayName(), "");
     }
 
     private static final Pattern LR2ORAJA_PREFIX = Pattern.compile("^_LR2oraja", Pattern.CASE_INSENSITIVE);
@@ -171,7 +168,7 @@ public final class FilenameParser {
     }
 
     private static ParsedMetadata parseResultBody(String body) {
-        String clearType = extractToken(body, CLEAR_TYPES);
+        String clearType = ClearLamp.findIn(body).map(ClearLamp::displayName).orElse("");
         String rank = extractToken(body, RANKS);
 
         String remaining = body;

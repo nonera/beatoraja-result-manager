@@ -57,21 +57,10 @@ public class TwitterBrowserPostService {
             ChromiumProfileLock.waitForProfileUnlock(profileDir);
             ChromiumProfileLock.clearDebugArtifacts(profileDir);
 
-            List<String> command = new ArrayList<>();
-            command.add(browser.toAbsolutePath().toString());
-            command.add("--user-data-dir=" + profileDir.toAbsolutePath());
-            command.add("--no-first-run");
-            command.add("--no-default-browser-check");
-            command.add("--disable-sync");
-            command.add("--disable-features=ChromeWhatsNewUI,TranslateUI");
-            command.add("--disable-blink-features=AutomationControlled");
-            command.add("--remote-debugging-port=0");
-            command.add("--window-size=1000,800");
-            command.add("about:blank");
-
-            ProcessBuilder builder = new ProcessBuilder(command);
-            builder.redirectErrorStream(true);
-            browserProcess = builder.start();
+            browserProcess = ChromiumLauncher.launch(browser, profileDir, true, List.of(
+                    "--remote-debugging-port=0",
+                    "--window-size=1000,800",
+                    "about:blank"));
 
             int debugPort = ChromiumDevToolsClient.waitForDebugPort(profileDir, STARTUP_TIMEOUT);
             return runComposeFlow(debugPort, text, imagePaths);

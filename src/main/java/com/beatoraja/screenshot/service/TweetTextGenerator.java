@@ -2,7 +2,6 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.config.ClearLampLabels;
 import com.beatoraja.screenshot.config.PostTextFormat;
-import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.PlayScore;
 
@@ -18,45 +17,21 @@ public final class TweetTextGenerator {
     private TweetTextGenerator() {
     }
 
-    public static String generate(ScreenshotEntry entry) {
-        return generate(entry, "");
-    }
-
-    public static String generate(ScreenshotEntry entry, String postNotation) {
-        return generate(entry, postNotation, null, PostTextFormat.defaults(), Map.of());
-    }
-
     /**
-     * Same as {@link #generate(ScreenshotEntry, String)}, but truncates the title to at most
-     * {@code maxTitleWeightedLength} Twitter-weighted units (CJK counts as two), appending an
-     * ellipsis when the title had to be shortened. Used to fit a caption under the tweet
-     * length limit without touching the notation/clear type/rank.
-     */
-    public static String generate(ScreenshotEntry entry, String postNotation, int maxTitleWeightedLength) {
-        return generate(entry, postNotation, null, PostTextFormat.defaults(), maxTitleWeightedLength, Map.of());
-    }
-
-    /**
-     * Builds the post text from {@code format}'s enabled items, in order. {@code score} is the
-     * matched play's judge counts; when null, score-derived items (BP, rate, ...) are omitted
-     * and the rank falls back to the one in the file name.
+     * Builds the post text from {@code format}'s enabled items, in order, with the title in
+     * full and no lamp-name overrides (used for the format dialog's preview). {@code score} is
+     * the matched play's judge counts; when null, score-derived items (BP, rate, ...) are
+     * omitted and the rank falls back to the one in the file name.
      */
     public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format) {
         return generate(entry, postNotation, score, format, NO_TITLE_LIMIT, Map.of());
     }
 
-    /** Same as above, with the clear lamp text swapped for the user's custom label, if any is configured for it. */
-    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
-            Map<String, String> clearLampLabels) {
-        return generate(entry, postNotation, score, format, NO_TITLE_LIMIT, clearLampLabels);
-    }
-
-    public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
-            int maxTitleWeightedLength) {
-        return generate(entry, postNotation, score, format, maxTitleWeightedLength, Map.of());
-    }
-
-    /** Same as above, with the clear lamp text swapped for the user's custom label, if any is configured for it. */
+    /**
+     * Same as above, but truncates the title to at most {@code maxTitleWeightedLength}
+     * Twitter-weighted units (CJK counts as two, an ellipsis marks the cut) and shows the clear
+     * lamp under the user's custom label when one is configured for it.
+     */
     public static String generate(ScreenshotEntry entry, String postNotation, PlayScore score, PostTextFormat format,
             int maxTitleWeightedLength, Map<String, String> clearLampLabels) {
         return buildResult(format, new Values(
@@ -91,31 +66,6 @@ public final class TweetTextGenerator {
             i += Character.charCount(codePoint);
         }
         return builder.append('…').toString();
-    }
-
-    public static String generate(ScreenshotRecord record) {
-        if (record == null) {
-            return "";
-        }
-        return buildResult(PostTextFormat.defaults(),
-                new Values(record.postNotation(), record.title(), record.clearType(), record.rank(), null),
-                record.fileName());
-    }
-
-    /**
-     * Builds one line per entry (in order), joined with newlines, so every selected
-     * screenshot's info is included instead of only the first one.
-     */
-    public static String generate(List<ScreenshotEntry> entries, List<String> postNotations) {
-        if (entries == null || entries.isEmpty()) {
-            return "";
-        }
-        List<String> lines = new ArrayList<>();
-        for (int i = 0; i < entries.size(); i++) {
-            String notation = postNotations != null && i < postNotations.size() ? postNotations.get(i) : "";
-            lines.add(generate(entries.get(i), notation));
-        }
-        return String.join("\n", lines);
     }
 
     private static String buildResult(PostTextFormat format, Values values, String fallback) {

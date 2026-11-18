@@ -4,23 +4,24 @@ import com.beatoraja.screenshot.config.AppConfig;
 import com.beatoraja.screenshot.config.PostTextFormat;
 import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
+import com.beatoraja.screenshot.model.EnrichedScreenshot;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
-import com.beatoraja.screenshot.player.PlayScore;
 import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.DiscordAutoPostQueue;
 import com.beatoraja.screenshot.service.DiscordWebhookService;
 import com.beatoraja.screenshot.service.LampGroupedTweetText;
 import com.beatoraja.screenshot.service.PostBatchSplitter;
+import com.beatoraja.screenshot.service.BatchPoster;
 import com.beatoraja.screenshot.service.PostedStateStore;
+import com.beatoraja.screenshot.service.PostTextComposer;
+import com.beatoraja.screenshot.service.PostTextComposer.PostContext;
 import com.beatoraja.screenshot.service.ScreenshotFolderCleanupService;
 import com.beatoraja.screenshot.service.ScreenshotScanner;
 import com.beatoraja.screenshot.service.ScreenshotWatcher;
-import com.beatoraja.screenshot.service.TweetTextGenerator;
-import com.beatoraja.screenshot.service.TweetTextLimits;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
 import com.beatoraja.screenshot.service.ChartResolverService;
-import com.beatoraja.screenshot.table.TableLookupService;
+import com.beatoraja.screenshot.table.DifficultyTableRegistry;
 import com.beatoraja.screenshot.ui.theme.AccentButton;
 import com.beatoraja.screenshot.ui.theme.UiTheme;
 import com.beatoraja.screenshot.util.AppIcons;
@@ -28,8 +29,6 @@ import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppVersion;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
@@ -40,17 +39,12 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
-import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
-import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FlowLayout;
@@ -64,9 +58,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -77,6 +76,7 @@ public class MainFrame extends JFrame {
     private static final int BMZ_RESOLVE_RETRY_MILLIS = 2000;
 
     private final AppConfig config;
+    private final PostTextComposer postComposer;
     private PostedStateStore postedStateStore;
     private ScreenshotWatcher screenshotWatcher;
     private ScreenshotDatabase screenshotDatabase;
@@ -94,12 +94,13 @@ public class MainFrame extends JFrame {
     private final JButton twitterButton = new AccentButton("Twitter に投稿", UiTheme.twitterAccent());
     private final JButton discordButton = new AccentButton("Discord に送信", UiTheme.discordAccent());
     private JMenuItem refreshMenuItem;
-    private SwingWorker<List<TableLookupService.EnrichedScreenshot>, Integer> indexingWorker;
+    private SwingWorker<List<EnrichedScreenshot>, Integer> indexingWorker;
 
     public MainFrame(AppConfig config) {
         super("beatoraja Screenshot Manager v" + AppVersion.get());
         AppIcons.applyTo(this);
         this.config = config;
+        this.postComposer = new PostTextComposer(config, this::resolvePostContext);
         this.postedStateStore = PostedStateStore.load();
         initDatabase();
         reloadTableRegistry();
@@ -129,6 +130,10 @@ public class MainFrame extends JFrame {
         reloadDatabaseQuietly();
         refreshScreenshots();
         startWatcher();
+        if (postedStateStore.loadProblem() != null) {
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, postedStateStore.loadProblem(),
+                    "投稿済みの記録", JOptionPane.WARNING_MESSAGE));
+        }
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -342,7 +347,7 @@ public class MainFrame extends JFrame {
     }
 
     private void refreshPostPreview() {
-        previewPanel.showEntries(postOrderEntries, buildMessagesByFile(postOrderEntries));
+        previewPanel.showEntries(postOrderEntries, postComposer.messagesByFile(postOrderEntries));
     }
 
     private void movePostOrderEntry(int fromIndex, int toIndex) {
@@ -370,34 +375,10 @@ public class MainFrame extends JFrame {
         previewPanel.setClearLampLabels(config.getClearLampLabels());
     }
 
-    /** The auto-generated post text for one entry; final wording is fixed in the pre-post confirmation dialog. */
-    private String resolveEntryMessage(ScreenshotEntry entry) {
-        PostContext context = resolvePostContext(entry);
-        return TweetTextGenerator.generate(entry, context.notation(), context.score(), config.getPostTextFormat(),
-                config.getClearLampLabels());
-    }
-
-    private Map<String, String> buildMessagesByFile(List<ScreenshotEntry> entries) {
-        Map<String, String> messages = new LinkedHashMap<>();
-        for (ScreenshotEntry entry : entries) {
-            messages.put(entry.getFileName(), resolveEntryMessage(entry));
-        }
-        return messages;
-    }
-
-    /** Joins each entry's own post text, in order, into the caption sent for one post/batch. */
-    private String mergeMessages(List<ScreenshotEntry> entries) {
-        List<String> lines = new ArrayList<>();
-        for (ScreenshotEntry entry : entries) {
-            lines.add(resolveEntryMessage(entry));
-        }
-        return String.join("\n", lines);
-    }
-
     /** The post notation (a user-chosen one saved in the DB wins) and the matched play's score, if any. */
     private PostContext resolvePostContext(ScreenshotEntry entry) {
         if (entry == null) {
-            return new PostContext("", null);
+            return PostContext.NONE;
         }
         String savedNotation = "";
         try {
@@ -411,15 +392,12 @@ public class MainFrame extends JFrame {
             // fall through to the resolved default
         }
         try {
-            TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+            EnrichedScreenshot enriched = chartResolverService.enrich(entry);
             String notation = savedNotation.isBlank() ? enriched.defaultPostNotation() : savedNotation;
             return new PostContext(notation, enriched.score());
         } catch (Exception e) {
             return new PostContext(savedNotation, null);
         }
-    }
-
-    private record PostContext(String notation, PlayScore score) {
     }
 
     private void updateActionButtons(int selectedCount) {
@@ -434,25 +412,24 @@ public class MainFrame extends JFrame {
         }
         twitterButton.setToolTipText(tooltip);
         discordButton.setEnabled(selectedCount >= 1 && discordWebhookCombo.getItemCount() > 0);
-        discordButton.setToolTipText(selectedCount > 10
-                ? "11枚以上は10枚ずつ分割送信します"
+        int maxDiscordImages = DiscordWebhookService.MAX_IMAGES_PER_POST;
+        discordButton.setToolTipText(selectedCount > maxDiscordImages
+                ? (maxDiscordImages + 1) + "枚以上は" + maxDiscordImages + "枚ずつ分割送信します"
                 : null);
     }
 
+    /** Reloads the tables and play data, then scans the screenshot folder and indexes it in the background. */
     private void refreshScreenshots() {
-        Path screenshotDir = Path.of(config.getScreenshotDirectory());
-        try {
-            reloadTableRegistry();
-            List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir, config.playerKind());
-            statusLabel.setText(entries.size() + " 件のスクショを読み込みました");
-            startIndexing(entries);
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "スクショフォルダの読み込みに失敗しました: " + e.getMessage(),
-                    "エラー", JOptionPane.ERROR_MESSAGE);
-        }
+        reloadTableRegistry();
+        startIndexing(Path.of(config.getScreenshotDirectory()));
     }
 
-    private void startIndexing(List<ScreenshotEntry> entries) {
+    /**
+     * Lists the screenshot folder and matches every screenshot to its chart on a worker
+     * thread - both can take a while for a large folder - then syncs the results into the
+     * database on the EDT.
+     */
+    private void startIndexing(Path screenshotDir) {
         if (screenshotDatabase == null) {
             return;
         }
@@ -460,18 +437,25 @@ public class MainFrame extends JFrame {
             indexingWorker.cancel(true);
         }
 
-        int total = entries.size();
+        PlayerKind player = config.playerKind();
         indexProgressBar.setMinimum(0);
-        indexProgressBar.setMaximum(total);
         indexProgressBar.setValue(0);
-        indexProgressBar.setString("インデックス作成中... 0 / " + total);
+        indexProgressBar.setString("スクショフォルダを読み込み中...");
+        indexProgressBar.setIndeterminate(true);
         indexProgressBar.setVisible(true);
         refreshMenuItem.setEnabled(false);
 
         indexingWorker = new SwingWorker<>() {
             @Override
-            protected List<TableLookupService.EnrichedScreenshot> doInBackground() {
-                List<TableLookupService.EnrichedScreenshot> enriched = new ArrayList<>(total);
+            protected List<EnrichedScreenshot> doInBackground() throws IOException {
+                List<ScreenshotEntry> entries = new ScreenshotScanner().scan(screenshotDir, player);
+                int total = entries.size();
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText(total + " 件のスクショを読み込みました");
+                    indexProgressBar.setIndeterminate(false);
+                    indexProgressBar.setMaximum(total);
+                });
+                List<EnrichedScreenshot> enriched = new ArrayList<>(total);
                 int done = 0;
                 for (ScreenshotEntry entry : entries) {
                     if (isCancelled()) {
@@ -488,20 +472,31 @@ public class MainFrame extends JFrame {
             protected void process(List<Integer> chunks) {
                 int latest = chunks.get(chunks.size() - 1);
                 indexProgressBar.setValue(latest);
-                indexProgressBar.setString("インデックス作成中... " + latest + " / " + total);
+                indexProgressBar.setString("インデックス作成中... " + latest + " / " + indexProgressBar.getMaximum());
             }
 
             @Override
             protected void done() {
                 refreshMenuItem.setEnabled(true);
+                indexProgressBar.setIndeterminate(false);
                 indexProgressBar.setVisible(false);
                 if (isCancelled()) {
                     return;
                 }
+                List<EnrichedScreenshot> enriched;
                 try {
-                    screenshotDatabase.syncAll(get());
+                    enriched = get();
+                } catch (Exception e) {
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    JOptionPane.showMessageDialog(MainFrame.this,
+                            "スクショフォルダの読み込みに失敗しました: " + cause.getMessage(),
+                            "エラー", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                try {
+                    screenshotDatabase.syncAll(enriched);
                     databasePanel.reload(screenshotDatabase);
-                    statusLabel.setText(total + " 件のスクショ");
+                    statusLabel.setText(enriched.size() + " 件のスクショ");
                 } catch (Exception e) {
                     statusLabel.setText("DB 同期失敗: " + e.getMessage());
                 }
@@ -515,12 +510,15 @@ public class MainFrame extends JFrame {
      * Player screenshots that is where the song, lamp and rank come from, since their file
      * names do not identify the chart.
      */
-    private TableLookupService.EnrichedScreenshot syncDatabaseEntry(ScreenshotEntry entry) {
-        // The new screenshot's play result may have just been written to
-        // scoredatalog.db, after chartResolverService last loaded it, so
-        // reload the player databases before resolving the sha256/md5.
-        reloadTableRegistry();
-        TableLookupService.EnrichedScreenshot enriched = chartResolverService.enrich(entry);
+    private EnrichedScreenshot syncDatabaseEntry(ScreenshotEntry entry) {
+        // The new screenshot's play may have been saved (or its song added) after the player
+        // data was last read; re-read that, but not the difficulty tables, which are slow.
+        try {
+            chartResolverService.reloadPlayData();
+        } catch (IOException e) {
+            statusLabel.setText("プレイ履歴の読み込みに失敗: " + e.getMessage());
+        }
+        EnrichedScreenshot enriched = chartResolverService.enrich(entry);
         if (screenshotDatabase != null) {
             try {
                 screenshotDatabase.upsert(enriched);
@@ -547,7 +545,7 @@ public class MainFrame extends JFrame {
 
     private void onScreenshotDetected(ScreenshotEntry entry) {
         LOG.info("Screenshot detected: " + entry.getFileName() + " (" + entry.getStateLabel() + ")");
-        TableLookupService.EnrichedScreenshot resolved = syncDatabaseEntry(entry);
+        EnrichedScreenshot resolved = syncDatabaseEntry(entry);
         if (chartResolverService.getPlayerKind() == PlayerKind.BMZ && entry.isResultScreenshot()
                 && !resolved.resolvedFromPlayerData()) {
             // BMZ Player may still be saving the play to score.db; try once more shortly.
@@ -645,7 +643,7 @@ public class MainFrame extends JFrame {
             return new AutoDiscordPostResult(0, List.of(), null);
         }
 
-        String message = mergeMessages(pending);
+        String message = postComposer.merged(pending);
         List<Path> imagePaths = pending.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
 
         DiscordWebhookService discordWebhookService = new DiscordWebhookService();
@@ -662,178 +660,13 @@ public class MainFrame extends JFrame {
     private record AutoDiscordPostResult(int postedCount, List<ScreenshotEntry> failedEntries, String errorMessage) {
     }
 
-    private static String joinBatchText(List<ScreenshotEntry> batch, Map<String, String> messagesByFile) {
-        return batch.stream().map(e -> messagesByFile.get(e.getFileName())).collect(Collectors.joining("\n"));
-    }
-
-    /** The lamp-grouped caption for a batch with too many images for a line each. */
-    private String buildLampGroupedText(List<ScreenshotEntry> batch) {
-        List<LampGroupedTweetText.Item> items = new ArrayList<>();
-        for (ScreenshotEntry entry : batch) {
-            items.add(new LampGroupedTweetText.Item(entry.getClearType(), resolvePostContext(entry).notation(),
-                    entry.getTitle()));
-        }
-        return LampGroupedTweetText.generate(items, config.getClearLampShortLabels(),
-                config.getClearLampGroupedVisibility());
-    }
-
-    /**
-     * Titles are never auto-shortened past this many weighted units. Kept generous
-     * (~15 Japanese characters) since the notation/comment portion of a caption is
-     * typically at most ~100 characters, not the reason a post goes over the limit, and
-     * because the confirmation dialog shown before posting is a manual-edit fallback for
-     * whatever this can't fix automatically - there's no need to crush titles further.
-     */
-    private static final int TITLE_MIN_WEIGHTED_LENGTH = 30;
-
-    /**
-     * If a batch's joined caption is over the limit, shortens entries' titles - longest
-     * title first - until it fits or no more can be shortened. Returns the file names it
-     * abbreviated.
-     */
-    private List<String> abbreviateBatchIfOverLimit(List<ScreenshotEntry> batch, Map<String, String> messagesByFile) {
-        List<String> abbreviated = new ArrayList<>();
-        int over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
-        if (over <= 0) {
-            return abbreviated;
-        }
-
-        List<ScreenshotEntry> candidates = new ArrayList<>(batch);
-        candidates.sort((a, b) -> Integer.compare(
-                TweetTextLimits.weightedLength(b.getTitle()), TweetTextLimits.weightedLength(a.getTitle())));
-
-        for (ScreenshotEntry entry : candidates) {
-            if (over <= 0) {
-                break;
-            }
-            int titleWeighted = TweetTextLimits.weightedLength(entry.getTitle());
-            int targetTitleWeighted = Math.max(TITLE_MIN_WEIGHTED_LENGTH, titleWeighted - over - 1);
-            if (targetTitleWeighted >= titleWeighted) {
-                continue;
-            }
-            PostContext context = resolvePostContext(entry);
-            messagesByFile.put(entry.getFileName(), TweetTextGenerator.generate(entry, context.notation(),
-                    context.score(), config.getPostTextFormat(), targetTitleWeighted, config.getClearLampLabels()));
-            abbreviated.add(entry.getFileName());
-            over = TweetTextLimits.weightedLength(joinBatchText(batch, messagesByFile)) - TweetTextLimits.WEIGHTED_LIMIT;
-        }
-        return abbreviated;
-    }
-
-    /**
-     * Shows the exact text that will be tweeted - merged per batch, editable right there -
-     * and asks the user to confirm before a browser is opened to actually post it. Since
-     * this is the last stop before posting, it also re-validates the 280-weighted-unit limit
-     * on every confirm attempt and won't let the user through until each batch fits or they
-     * cancel, looping with whatever they last typed preserved.
-     *
-     * @return the (possibly user-edited) text to post for each batch, or {@code null} if
-     *         the user canceled
-     */
-    private List<String> promptFinalPostTexts(List<String> initialTexts, int abbreviatedCount) {
-        List<String> texts = new ArrayList<>(initialTexts);
-
-        while (true) {
-            JPanel content = new JPanel();
-            content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-            if (abbreviatedCount > 0) {
-                content.add(new JLabel("※文字数制限のため、" + abbreviatedCount + " 件の曲名を自動的に省略しています。"));
-                content.add(Box.createVerticalStrut(8));
-            }
-
-            List<JTextArea> areas = new ArrayList<>();
-            for (int i = 0; i < texts.size(); i++) {
-                if (texts.size() > 1) {
-                    content.add(new JLabel((i + 1) + " 件目のツイート"));
-                }
-                JTextArea area = new JTextArea(texts.get(i), 6, 40);
-                area.setLineWrap(true);
-                area.setWrapStyleWord(true);
-                areas.add(area);
-
-                JLabel counter = new JLabel();
-                updateWeightedCountLabel(counter, area.getText());
-                area.getDocument().addDocumentListener((SimpleDocumentListener) () -> updateWeightedCountLabel(counter, area.getText()));
-
-                content.add(new JScrollPane(area));
-                content.add(counter);
-                content.add(Box.createVerticalStrut(8));
-            }
-
-            JScrollPane outer = new JScrollPane(content);
-            outer.setPreferredSize(new Dimension(460, 360));
-
-            int result = JOptionPane.showConfirmDialog(this, outer, "この内容で投稿しますか？",
-                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-            if (result != JOptionPane.OK_OPTION) {
-                return null;
-            }
-
-            for (int i = 0; i < areas.size(); i++) {
-                texts.set(i, areas.get(i).getText());
-            }
-
-            List<String> overLimitBatches = new ArrayList<>();
-            for (int i = 0; i < texts.size(); i++) {
-                int weighted = TweetTextLimits.weightedLength(texts.get(i));
-                if (weighted > TweetTextLimits.WEIGHTED_LIMIT) {
-                    overLimitBatches.add((i + 1) + "件目: " + weighted + " / " + TweetTextLimits.WEIGHTED_LIMIT + " 文字");
-                }
-            }
-            if (overLimitBatches.isEmpty()) {
-                return texts;
-            }
-            abbreviatedCount = 0; // already shown once; don't repeat the note on every retry
-            JOptionPane.showMessageDialog(this,
-                    "文字数制限を超えています。修正してください。\n\n" + String.join("\n", overLimitBatches),
-                    "文字数オーバー", JOptionPane.WARNING_MESSAGE);
-        }
-    }
-
-    private static void updateWeightedCountLabel(JLabel label, String text) {
-        int weighted = TweetTextLimits.weightedLength(text);
-        label.setText(weighted + " / " + TweetTextLimits.WEIGHTED_LIMIT);
-        label.setForeground(weighted > TweetTextLimits.WEIGHTED_LIMIT ? new Color(0xE8484F) : UiTheme.mutedText());
-    }
-
-    @FunctionalInterface
-    private interface SimpleDocumentListener extends DocumentListener {
-        void onChange();
-
-        @Override
-        default void insertUpdate(DocumentEvent e) {
-            onChange();
-        }
-
-        @Override
-        default void removeUpdate(DocumentEvent e) {
-            onChange();
-        }
-
-        @Override
-        default void changedUpdate(DocumentEvent e) {
-            onChange();
-        }
-    }
-
     private void postToTwitter() {
         List<ScreenshotEntry> selected = List.copyOf(postOrderEntries);
         if (selected.isEmpty()) {
             return;
         }
-        Map<String, String> messageSnapshot = buildMessagesByFile(selected);
-
         List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, ClixService.MAX_IMAGES_PER_POST);
-        List<String> abbreviatedFileNames = new ArrayList<>();
-        List<String> initialBatchTexts = new ArrayList<>();
-        for (List<ScreenshotEntry> batch : batches) {
-            if (LampGroupedTweetText.shouldUse(batch.size())) {
-                initialBatchTexts.add(buildLampGroupedText(batch));
-            } else {
-                abbreviatedFileNames.addAll(abbreviateBatchIfOverLimit(batch, messageSnapshot));
-                initialBatchTexts.add(joinBatchText(batch, messageSnapshot));
-            }
-        }
+        PostTextComposer.TweetTexts tweetTexts = postComposer.tweetTexts(batches);
 
         TwitterAuthService authService = new TwitterAuthService(config);
         if (!authService.hasStoredSession()) {
@@ -845,84 +678,39 @@ public class MainFrame extends JFrame {
             }
         }
 
-        List<String> finalBatchTexts = promptFinalPostTexts(initialBatchTexts, abbreviatedFileNames.size());
-        if (finalBatchTexts == null) {
+        List<String> texts = PostConfirmDialog.confirmTweets(this, tweetTexts.texts(), tweetTexts.abbreviatedCount());
+        if (texts == null) {
             return;
         }
+        ClixService clixService = new ClixService(config);
+        runManualPost(new ManualPost(
+                "Twitter",
+                batch -> "Twitter 投稿 (" + batch + "/" + batches.size() + ") — ブラウザで投稿してください...",
+                "Twitter 投稿 (0/" + batches.size() + ")",
+                "Twitter 投稿完了",
+                batches.size() > 1 ? batches.size() + " 件のツイート投稿が完了しました。" : "Twitter に投稿しました。",
+                "Twitter 投稿失敗",
+                "投稿済み",
+                (text, images) -> {
+                    ClixService.PostResult result = clixService.post(text, images);
+                    return result.success() ? null : failureMessage(result.message());
+                },
+                posted -> posted.forEach(entry -> postedStateStore.markTwitterPosted(entry.getFileName(), "")),
+                this::showTwitterPostFailure
+        ), selected, batches, texts);
+    }
 
-        setPostingEnabled(false);
-        statusLabel.setText("Twitter 投稿 (0/" + batches.size() + ")");
-        LOG.info("Twitter manual post started: " + selected.size() + " image(s), "
-                + batches.size() + " batch(es)");
-
-        new Thread(() -> {
-            ClixService clixService = new ClixService(config);
-            List<ScreenshotEntry> postedEntries = new ArrayList<>();
-            String lastError = null;
-            for (int i = 0; i < batches.size(); i++) {
-                List<ScreenshotEntry> batch = batches.get(i);
-                int batchNumber = i + 1;
-                SwingUtilities.invokeLater(() ->
-                        statusLabel.setText("Twitter 投稿 (" + batchNumber + "/" + batches.size()
-                                + ") — ブラウザで投稿してください..."));
-                String text = finalBatchTexts.get(i);
-                List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
-                ClixService.PostResult result = clixService.post(text, imagePaths);
-                if (result.success()) {
-                    postedEntries.addAll(batch);
-                } else {
-                    lastError = result.message();
-                    break;
-                }
+    /** X failures caused by the login offer to log in again. */
+    private void showTwitterPostFailure(String message, String error) {
+        if (error.contains("ログイン") || error.contains("認証")) {
+            int answer = JOptionPane.showConfirmDialog(this, message + "\n\nTwitter に再ログインしますか？",
+                    "Twitter 投稿失敗", JOptionPane.YES_NO_OPTION);
+            if (answer == JOptionPane.YES_OPTION) {
+                new TwitterLoginDialog(this, config).showAndLogin();
             }
-
-            List<ScreenshotEntry> postedSnapshot = List.copyOf(postedEntries);
-            String errorMessage = lastError;
-            int batchCount = batches.size();
-            SwingUtilities.invokeLater(() -> {
-                setPostingEnabled(true);
-                if (errorMessage == null) {
-                    LOG.info("Twitter manual post succeeded: " + postedSnapshot.size() + " image(s)");
-                    for (ScreenshotEntry entry : postedSnapshot) {
-                        postedStateStore.markTwitterPosted(entry.getFileName(), "");
-                    }
-                    savePostedStateQuietly();
-                    databasePanel.setPostedStateStore(postedStateStore);
-                    statusLabel.setText("Twitter 投稿完了");
-                    String completionMessage = batchCount > 1
-                            ? batchCount + " 件のツイート投稿が完了しました。"
-                            : "Twitter に投稿しました。";
-                    JOptionPane.showMessageDialog(this, completionMessage, "完了", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    statusLabel.setText("Twitter 投稿失敗");
-                    LOG.warning("Twitter manual post failed: " + AppLogging.sanitize(errorMessage));
-                    if (!postedSnapshot.isEmpty()) {
-                        for (ScreenshotEntry entry : postedSnapshot) {
-                            postedStateStore.markTwitterPosted(entry.getFileName(), "");
-                        }
-                        savePostedStateQuietly();
-                        databasePanel.setPostedStateStore(postedStateStore);
-                    }
-                    String message = postedSnapshot.isEmpty()
-                            ? errorMessage
-                            : postedSnapshot.size() + " 枚までは投稿済みです。\n" + errorMessage;
-                    if (errorMessage.contains("ログイン") || errorMessage.contains("認証")) {
-                        int answer = JOptionPane.showConfirmDialog(
-                                this,
-                                message + "\n\nTwitter に再ログインしますか？",
-                                "Twitter 投稿失敗",
-                                JOptionPane.YES_NO_OPTION
-                        );
-                        if (answer == JOptionPane.YES_OPTION) {
-                            TwitterLoginDialog loginDialog = new TwitterLoginDialog(this, config);
-                            loginDialog.showAndLogin();
-                        }
-                    } else {
-                        JOptionPane.showMessageDialog(this, message, "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
-                    }
-                }
-            });
-        }, "twitter-post").start();
+        } else {
+            JOptionPane.showMessageDialog(this, message, "Twitter 投稿失敗", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void postToDiscord() {
@@ -930,127 +718,97 @@ public class MainFrame extends JFrame {
         if (selected.isEmpty()) {
             return;
         }
-        Map<String, String> messageSnapshot = buildMessagesByFile(selected);
-
         AppConfig.DiscordWebhookEntry webhook = (AppConfig.DiscordWebhookEntry) discordWebhookCombo.getSelectedItem();
         if (webhook == null || webhook.getUrl() == null || webhook.getUrl().isBlank()) {
             JOptionPane.showMessageDialog(this, "Discord Webhook URL を設定してください。", "設定不足", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, 10);
-        List<String> finalBatchTexts = promptFinalDiscordPostTexts(batches, messageSnapshot);
-        if (finalBatchTexts == null) {
+        List<List<ScreenshotEntry>> batches = PostBatchSplitter.partition(selected, DiscordWebhookService.MAX_IMAGES_PER_POST);
+        Map<String, String> messages = postComposer.messagesByFile(selected);
+        List<String> texts = PostConfirmDialog.confirmDiscord(this,
+                batches.stream().map(batch -> PostTextComposer.join(batch, messages)).toList());
+        if (texts == null) {
             return;
         }
+        LOG.info("Discord manual post via " + AppLogging.maskWebhookUrl(webhook.getUrl()));
+        DiscordWebhookService discordWebhookService = new DiscordWebhookService();
+        runManualPost(new ManualPost(
+                "Discord",
+                batch -> "Discord に送信中... (" + batch + "/" + batches.size() + ")",
+                "Discord に送信中... (0/" + batches.size() + ")",
+                "Discord 送信完了",
+                batches.size() > 1 ? "Discord に " + batches.size() + " 回に分けて送信しました。" : "Discord に送信しました。",
+                "Discord 送信失敗",
+                "送信済み",
+                (text, images) -> {
+                    DiscordWebhookService.PostResult result = discordWebhookService.post(webhook.getUrl(), text, images);
+                    return result.success() ? null : failureMessage(result.message());
+                },
+                posted -> {
+                    posted.forEach(entry -> postedStateStore.markDiscordPosted(entry.getFileName(), ""));
+                    discordAutoPostQueue.removePosted(posted);
+                },
+                (message, error) -> JOptionPane.showMessageDialog(this, message, "Discord 送信失敗", JOptionPane.ERROR_MESSAGE)
+        ), selected, batches, texts);
+    }
 
-        setPostingEnabled(false);
-        statusLabel.setText("Discord に送信中... (0/" + batches.size() + ")");
-        LOG.info("Discord manual post started: " + selected.size() + " image(s), "
-                + batches.size() + " batch(es) via "
-                + AppLogging.maskWebhookUrl(webhook.getUrl()));
-
-        new Thread(() -> {
-            DiscordWebhookService discordWebhookService = new DiscordWebhookService();
-            List<ScreenshotEntry> postedEntries = new ArrayList<>();
-            String lastError = null;
-            for (int i = 0; i < batches.size(); i++) {
-                List<ScreenshotEntry> batch = batches.get(i);
-                int batchNumber = i + 1;
-                SwingUtilities.invokeLater(() ->
-                        statusLabel.setText("Discord に送信中... (" + batchNumber + "/" + batches.size() + ")"));
-                String message = finalBatchTexts.get(i);
-                List<Path> imagePaths = batch.stream().map(ScreenshotEntry::getFilePath).collect(Collectors.toList());
-                DiscordWebhookService.PostResult result =
-                        discordWebhookService.post(webhook.getUrl(), message, imagePaths);
-                if (result.success()) {
-                    postedEntries.addAll(batch);
-                } else {
-                    lastError = result.message();
-                    break;
-                }
-            }
-
-            List<ScreenshotEntry> postedSnapshot = List.copyOf(postedEntries);
-            String errorMessage = lastError;
-            int batchCount = batches.size();
-            SwingUtilities.invokeLater(() -> {
-                setPostingEnabled(true);
-                if (errorMessage == null) {
-                    LOG.info("Discord manual post succeeded: " + postedSnapshot.size() + " image(s)");
-                    for (ScreenshotEntry entry : postedSnapshot) {
-                        postedStateStore.markDiscordPosted(entry.getFileName(), "");
-                    }
-                    discordAutoPostQueue.removePosted(postedSnapshot);
-                    savePostedStateQuietly();
-                    databasePanel.setPostedStateStore(postedStateStore);
-                    statusLabel.setText("Discord 送信完了");
-                    String completionMessage = batchCount > 1
-                            ? "Discord に " + batchCount + " 回に分けて送信しました。"
-                            : "Discord に送信しました。";
-                    JOptionPane.showMessageDialog(this, completionMessage, "完了", JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    statusLabel.setText("Discord 送信失敗");
-                    LOG.warning("Discord manual post failed: " + AppLogging.sanitize(errorMessage));
-                    if (!postedSnapshot.isEmpty()) {
-                        for (ScreenshotEntry entry : postedSnapshot) {
-                            postedStateStore.markDiscordPosted(entry.getFileName(), "");
-                        }
-                        discordAutoPostQueue.removePosted(postedSnapshot);
-                        savePostedStateQuietly();
-                        databasePanel.setPostedStateStore(postedStateStore);
-                    }
-                    String message = postedSnapshot.isEmpty()
-                            ? errorMessage
-                            : postedSnapshot.size() + " 枚までは送信済みです。\n" + errorMessage;
-                    JOptionPane.showMessageDialog(this, message, "Discord 送信失敗", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-        }, "discord-post").start();
+    private static String failureMessage(String message) {
+        return message == null || message.isBlank() ? "投稿に失敗しました" : message;
     }
 
     /**
-     * Shows the exact text that will be sent to Discord - merged per batch, editable right
-     * there - and asks the user to confirm before sending. Unlike the Twitter flow, Discord
-     * messages have no practical character limit to enforce, so this is a single pass with
-     * no re-validation loop.
-     *
-     * @return the (possibly user-edited) text to send for each batch, or {@code null} if the
-     *         user canceled
+     * How one service's manual post reads and records: the status texts, the sender, how sent
+     * screenshots are marked posted, and how a failure is shown ({@code (message, error)}).
      */
-    private List<String> promptFinalDiscordPostTexts(List<List<ScreenshotEntry>> batches,
-            Map<String, String> messagesByFile) {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+    private record ManualPost(
+            String service,
+            IntFunction<String> progressStatus,
+            String startStatus,
+            String doneStatus,
+            String completionMessage,
+            String failedStatus,
+            String sentWord,
+            BatchPoster.Sender sender,
+            Consumer<List<ScreenshotEntry>> markPosted,
+            BiConsumer<String, String> showFailure) {
+    }
 
-        List<JTextArea> areas = new ArrayList<>();
-        for (int i = 0; i < batches.size(); i++) {
-            if (batches.size() > 1) {
-                content.add(new JLabel((i + 1) + " 件目の送信"));
-            }
-            JTextArea area = new JTextArea(joinBatchText(batches.get(i), messagesByFile), 6, 40);
-            area.setLineWrap(true);
-            area.setWrapStyleWord(true);
-            areas.add(area);
+    /**
+     * Sends the batches on a worker thread, then - on the EDT - records whatever went out as
+     * posted (also when a later batch failed) and tells the user how it ended.
+     */
+    private void runManualPost(ManualPost post, List<ScreenshotEntry> selected, List<List<ScreenshotEntry>> batches,
+            List<String> texts) {
+        setPostingEnabled(false);
+        statusLabel.setText(post.startStatus());
+        LOG.info(post.service() + " manual post started: " + selected.size() + " image(s), "
+                + batches.size() + " batch(es)");
 
-            content.add(new JScrollPane(area));
-            content.add(Box.createVerticalStrut(8));
-        }
-
-        JScrollPane outer = new JScrollPane(content);
-        outer.setPreferredSize(new Dimension(460, 360));
-
-        int result = JOptionPane.showConfirmDialog(this, outer, "この内容で送信しますか？",
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (result != JOptionPane.OK_OPTION) {
-            return null;
-        }
-
-        List<String> texts = new ArrayList<>();
-        for (JTextArea area : areas) {
-            texts.add(area.getText());
-        }
-        return texts;
+        new Thread(() -> {
+            BatchPoster.Result result = BatchPoster.postInOrder(batches, texts, post.sender(),
+                    batch -> SwingUtilities.invokeLater(() -> statusLabel.setText(post.progressStatus().apply(batch))));
+            SwingUtilities.invokeLater(() -> {
+                setPostingEnabled(true);
+                if (!result.posted().isEmpty()) {
+                    post.markPosted().accept(result.posted());
+                    savePostedStateQuietly();
+                    databasePanel.setPostedStateStore(postedStateStore);
+                }
+                if (result.succeeded()) {
+                    LOG.info(post.service() + " manual post succeeded: " + result.posted().size() + " image(s)");
+                    statusLabel.setText(post.doneStatus());
+                    JOptionPane.showMessageDialog(this, post.completionMessage(), "完了", JOptionPane.INFORMATION_MESSAGE);
+                    return;
+                }
+                statusLabel.setText(post.failedStatus());
+                LOG.warning(post.service() + " manual post failed: " + AppLogging.sanitize(result.error()));
+                String message = result.posted().isEmpty()
+                        ? result.error()
+                        : result.posted().size() + " 枚までは" + post.sentWord() + "です。\n" + result.error();
+                post.showFailure().accept(message, result.error());
+            });
+        }, post.service().toLowerCase(Locale.ROOT) + "-post").start();
     }
 
     private void savePostedStateQuietly() {
@@ -1075,7 +833,6 @@ public class MainFrame extends JFrame {
                 return;
             }
             reloadDiscordWebhooks();
-            reloadTableRegistry();
             applyClearLampLabels();
             refreshScreenshots();
             startWatcher();
@@ -1109,41 +866,53 @@ public class MainFrame extends JFrame {
                 "難易度表の読み込み失敗", JOptionPane.WARNING_MESSAGE);
     }
 
-    private void openTablePriorityDialog() {
-        List<com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo> knownTables =
-                chartResolverService.getKnownTables();
+    /** The loaded difficulty tables, or null - after telling the user - when none are loaded. */
+    private List<DifficultyTableRegistry.TableInfo> requireLoadedTables(String dialogTitle) {
+        List<DifficultyTableRegistry.TableInfo> knownTables = chartResolverService.getKnownTables();
         if (knownTables.isEmpty()) {
             JOptionPane.showMessageDialog(this,
                     "難易度表が読み込まれていません。設定でbeatorajaフォルダを指定してください。",
-                    "難易度表の優先順位", JOptionPane.INFORMATION_MESSAGE);
-            return;
+                    dialogTitle, JOptionPane.INFORMATION_MESSAGE);
+            return null;
         }
         warnAboutFailedTableFiles();
+        return knownTables;
+    }
 
-        java.util.Map<String, String> symbolOverrideByTag = new java.util.LinkedHashMap<>();
-        for (AppConfig.TableNotationRule rule : config.getTableNotationRules()) {
-            if (!rule.getSymbolOverrides().isEmpty()) {
-                String combined = String.join("/", new java.util.LinkedHashSet<>(rule.getSymbolOverrides().values()));
-                symbolOverrideByTag.put(rule.getTableTag(), combined);
-            }
-        }
-
-        TablePriorityDialog dialog = new TablePriorityDialog(this, config.getTablePriorityOrder(), knownTables,
-                symbolOverrideByTag, chartResolverService.getLoadedFileCount());
-        List<String> newOrder = dialog.showDialog();
-        if (newOrder == null) {
-            return;
-        }
-
-        config.setTablePriorityOrder(newOrder);
+    /** Saves the config; on failure tells the user and returns false. */
+    private boolean saveConfig() {
         try {
             config.save();
+            return true;
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
                     "エラー", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+    }
+
+    private void openTablePriorityDialog() {
+        List<DifficultyTableRegistry.TableInfo> knownTables = requireLoadedTables("難易度表の優先順位");
+        if (knownTables == null) {
             return;
         }
-        refreshScreenshots();
+        Map<String, String> symbolOverrideByTag = new LinkedHashMap<>();
+        for (AppConfig.TableNotationRule rule : config.getTableNotationRules()) {
+            if (!rule.getSymbolOverrides().isEmpty()) {
+                symbolOverrideByTag.put(rule.getTableTag(),
+                        String.join("/", new LinkedHashSet<>(rule.getSymbolOverrides().values())));
+            }
+        }
+
+        List<String> newOrder = new TablePriorityDialog(this, config.getTablePriorityOrder(), knownTables,
+                symbolOverrideByTag, chartResolverService.getLoadedFileCount()).showDialog();
+        if (newOrder == null) {
+            return;
+        }
+        config.setTablePriorityOrder(newOrder);
+        if (saveConfig()) {
+            refreshScreenshots();
+        }
     }
 
     private void openPostTextFormatDialog() {
@@ -1152,61 +921,40 @@ public class MainFrame extends JFrame {
             return;
         }
         config.setPostTextFormat(newFormat);
-        try {
-            config.save();
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
-                    "エラー", JOptionPane.ERROR_MESSAGE);
-            return;
+        if (saveConfig()) {
+            refreshPostPreview();
         }
-        refreshPostPreview();
     }
 
     private void openTableNotationRulesDialog() {
-        List<com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo> knownTables =
-                chartResolverService.getKnownTables();
-        if (knownTables.isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                    "難易度表が読み込まれていません。設定でbeatorajaフォルダを指定してください。",
-                    "難易度表ごとの投稿表記ルール", JOptionPane.INFORMATION_MESSAGE);
+        List<DifficultyTableRegistry.TableInfo> knownTables = requireLoadedTables("難易度表ごとの投稿表記ルール");
+        if (knownTables == null) {
             return;
         }
-        warnAboutFailedTableFiles();
-
-        java.util.Map<String, java.util.Map<String, List<String>>> notationsByTagAndSymbol = new java.util.LinkedHashMap<>();
-        for (com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo info : knownTables) {
-            java.util.Map<String, List<String>> bySymbol = new java.util.LinkedHashMap<>();
+        Map<String, Map<String, List<String>>> notationsByTagAndSymbol = new LinkedHashMap<>();
+        Map<String, String> tablePrefixByTag = new LinkedHashMap<>();
+        for (DifficultyTableRegistry.TableInfo info : knownTables) {
+            Map<String, List<String>> bySymbol = new LinkedHashMap<>();
             for (String symbol : chartResolverService.getSymbolsForTag(info.tag())) {
                 bySymbol.put(symbol, chartResolverService.getNotationsForTagAndSymbol(info.tag(), symbol));
             }
             notationsByTagAndSymbol.put(info.tag(), bySymbol);
-        }
-
-        java.util.Map<String, String> tablePrefixByTag = new java.util.LinkedHashMap<>();
-        for (com.beatoraja.screenshot.table.DifficultyTableRegistry.TableInfo info : knownTables) {
             String prefix = chartResolverService.getTablePrefix(info.tag());
             if (!prefix.isBlank()) {
                 tablePrefixByTag.put(info.tag(), prefix);
             }
         }
 
-        TableNotationRulesDialog dialog = new TableNotationRulesDialog(this, config.getTableNotationRules(),
+        List<AppConfig.TableNotationRule> newRules = new TableNotationRulesDialog(this, config.getTableNotationRules(),
                 knownTables, notationsByTagAndSymbol, chartResolverService.getLoadedFileCount(),
-                chartResolverService.getKnownTags(), tablePrefixByTag);
-        List<AppConfig.TableNotationRule> newRules = dialog.showDialog();
+                chartResolverService.getKnownTags(), tablePrefixByTag).showDialog();
         if (newRules == null) {
             return;
         }
-
         config.setTableNotationRules(newRules);
-        try {
-            config.save();
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "設定の保存に失敗しました: " + e.getMessage(),
-                    "エラー", JOptionPane.ERROR_MESSAGE);
-            return;
+        if (saveConfig()) {
+            refreshScreenshots();
         }
-        refreshScreenshots();
     }
 
     private void exitApplication() {
