@@ -32,8 +32,8 @@ public final class ClixAuthSupport {
         Files.createDirectories(authFile.getParent());
 
         Map<String, Object> account = new LinkedHashMap<>();
-        account.put("auth_token", config.getTwitterAuthToken().trim());
-        account.put("ct0", config.getTwitterCt0().trim());
+        account.put("auth_token", config.twitterAuthToken().trim());
+        account.put("ct0", config.twitterCt0().trim());
         account.put("cookies", new LinkedHashMap<>(config.getTwitterCookies()));
         account.put("account_name", "default");
 

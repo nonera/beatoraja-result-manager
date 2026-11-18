@@ -75,8 +75,8 @@ public class PostTextFormatDialog extends JDialog {
         itemsPanel.add(new JScrollPane(table), BorderLayout.CENTER);
         JPanel moveButtons = new JPanel();
         moveButtons.setLayout(new BoxLayout(moveButtons, BoxLayout.Y_AXIS));
-        moveButtons.add(button("上へ", () -> moveBy(-1)));
-        moveButtons.add(button("下へ", () -> moveBy(1)));
+        moveButtons.add(DialogParts.button("上へ", () -> moveBy(-1)));
+        moveButtons.add(DialogParts.button("下へ", () -> moveBy(1)));
         itemsPanel.add(moveButtons, BorderLayout.EAST);
 
         JPanel rankPanel = new JPanel(new GridLayout(0, 6, 4, 4));
@@ -172,12 +172,6 @@ public class PostTextFormatDialog extends JDialog {
         }
     }
 
-    private JButton button(String label, Runnable action) {
-        JButton button = new JButton(label);
-        button.setAlignmentX(Component.CENTER_ALIGNMENT);
-        button.addActionListener(e -> action.run());
-        return button;
-    }
 
     private void moveBy(int direction) {
         stopEditing();

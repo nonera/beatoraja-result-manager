@@ -10,7 +10,6 @@ import java.util.logging.Logger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
@@ -44,12 +43,7 @@ public class TwitterChromeLoginService {
         stopBrowser();
         ChromiumProfileLock.clearDebugArtifacts(profileDir);
 
-        List<String> command = baseLaunchArgs(browser, profileDir, false);
-        command.add("https://x.com/i/flow/login");
-
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.redirectErrorStream(true);
-        browserProcess = builder.start();
+        browserProcess = ChromiumLauncher.launch(browser, profileDir, true, List.of("https://x.com/i/flow/login"));
     }
 
     /**
@@ -135,15 +129,12 @@ public class TwitterChromeLoginService {
         Files.createDirectories(profileDir);
         ChromiumProfileLock.clearDebugArtifacts(profileDir);
 
-        List<String> command = baseLaunchArgs(browser, profileDir, true);
-        command.add("--remote-debugging-port=0");
-        command.add("--window-position=-32000,-32000");
-        command.add("--window-size=960,720");
-        command.add("about:blank");
-
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.redirectErrorStream(true);
-        browserProcess = builder.start();
+        // Off-screen: the user never works in this window, it only lets CDP read the cookies.
+        browserProcess = ChromiumLauncher.launch(browser, profileDir, false, List.of(
+                "--remote-debugging-port=0",
+                "--window-position=-32000,-32000",
+                "--window-size=960,720",
+                "about:blank"));
 
         try {
             int debugPort;
@@ -163,8 +154,8 @@ public class TwitterChromeLoginService {
                 if (!browserProcess.isAlive()) {
                     throw new IOException("Cookie 取得用ブラウザが予期せず終了しました");
                 }
-                try (ChromiumDevToolsClient client = new ChromiumDevToolsClient(debugPort)) {
-                    TwitterCookies cookies = client.readTwitterCookies();
+                try {
+                    TwitterCookies cookies = new ChromiumDevToolsClient(debugPort).readTwitterCookies();
                     if (cookies.isComplete()) {
                         return cookies;
                     }
@@ -184,20 +175,6 @@ public class TwitterChromeLoginService {
             stopBrowser();
             ChromiumProfileLock.waitForProfileUnlock(profileDirectory());
         }
-    }
-
-    private List<String> baseLaunchArgs(Path browser, Path profileDir, boolean automation) {
-        List<String> command = new ArrayList<>();
-        command.add(browser.toAbsolutePath().toString());
-        command.add("--user-data-dir=" + profileDir.toAbsolutePath());
-        command.add("--no-first-run");
-        command.add("--no-default-browser-check");
-        command.add("--disable-sync");
-        command.add("--disable-features=ChromeWhatsNewUI,TranslateUI");
-        if (!automation) {
-            command.add("--disable-blink-features=AutomationControlled");
-        }
-        return command;
     }
 
     public void stopBrowser() {

@@ -46,18 +46,14 @@ public final class AppPaths {
     }
 
     private static Path resolveAppData() {
-        String appData = System.getenv("APPDATA");
-        if (appData != null && !appData.isBlank()) {
-            Path dir = Paths.get(appData, "beatoraja-screenshot-manager");
-            try {
-                Files.createDirectories(dir);
-            } catch (IOException e) {
-                System.err.println("Failed to create app data directory: " + dir.toAbsolutePath()
-                        + " (" + e.getMessage() + ")");
-            }
-            return dir;
+        Path dir = AppDataLocation.resolve();
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            System.err.println("Failed to create app data directory: " + dir.toAbsolutePath()
+                    + " (" + e.getMessage() + ")");
         }
-        return Paths.get(System.getProperty("user.home"), ".beatoraja-screenshot-manager");
+        return dir;
     }
 
     private static Path resolveExeDir() {

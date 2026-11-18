@@ -58,20 +58,17 @@ public final class Badge {
     }
 
     private static Color readableText(Color color, Color background) {
-        float backgroundLuminance = luminance(background);
+        float backgroundLuminance = UiTheme.luminance(background);
         Color candidate = color;
         // Pale lamp colors (PERFECT, MAX) wash out on light backgrounds; darken them instead.
-        if (backgroundLuminance > 0.5f && luminance(candidate) > 0.62f) {
+        if (backgroundLuminance > 0.5f && UiTheme.luminance(candidate) > 0.62f) {
             candidate = candidate.darker().darker();
-        } else if (backgroundLuminance <= 0.5f && luminance(candidate) < 0.35f) {
+        } else if (backgroundLuminance <= 0.5f && UiTheme.luminance(candidate) < 0.35f) {
             candidate = candidate.brighter().brighter();
         }
         return candidate;
     }
 
-    private static float luminance(Color color) {
-        return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
-    }
 
     private static final class BadgeLabel extends JLabel {
         private final Color badgeColor;

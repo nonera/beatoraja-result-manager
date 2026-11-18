@@ -6,6 +6,7 @@ import com.beatoraja.screenshot.db.ScreenshotDatabase;
 import com.beatoraja.screenshot.db.ScreenshotRecord;
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.service.PostedStateStore;
+import com.beatoraja.screenshot.service.ScreenshotFileRemover;
 import com.beatoraja.screenshot.ui.render.BadgeCellRenderer;
 import com.beatoraja.screenshot.ui.render.CapturedAtCellRenderer;
 import com.beatoraja.screenshot.ui.render.StateCell;
@@ -26,6 +27,7 @@ import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.SwingWorker;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
@@ -44,8 +46,6 @@ import java.awt.FontMetrics;
 import java.awt.FlowLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -362,15 +362,6 @@ public class DatabasePanel extends JPanel {
         }
     }
 
-    public ScreenshotRecord getSelectedRecord() {
-        int viewRow = table.getSelectedRow();
-        if (viewRow < 0) {
-            return null;
-        }
-        int modelRow = table.convertRowIndexToModel(viewRow);
-        return tableModel.getRecordAt(modelRow);
-    }
-
     private void showRowContextMenu(MouseEvent e) {
         int selectedCount = table.getSelectedRowCount();
         JPopupMenu menu = new JPopupMenu();
@@ -382,7 +373,10 @@ public class DatabasePanel extends JPanel {
         menu.show(table, e.getX(), e.getY());
     }
 
-    /** Deletes the selected screenshots from disk and the database, then refreshes the table. */
+    /**
+     * Deletes the selected screenshots: the image files on a worker thread (they can be many
+     * and slow), then - back on the EDT - the database rows of the files that are gone.
+     */
     private void deleteSelectedRows() {
         int[] viewRows = table.getSelectedRows();
         if (viewRows.length == 0) {
@@ -403,34 +397,51 @@ public class DatabasePanel extends JPanel {
             return;
         }
 
-        List<String> failures = new ArrayList<>();
-        for (ScreenshotRecord record : targets) {
-            try {
-                Files.deleteIfExists(record.filePath());
-                if (database != null) {
-                    database.delete(record.id());
-                }
-            } catch (IOException | SQLException ex) {
-                failures.add(record.fileName() + ": " + ex.getMessage());
+        new SwingWorker<ScreenshotFileRemover.Result, Void>() {
+            @Override
+            protected ScreenshotFileRemover.Result doInBackground() {
+                return ScreenshotFileRemover.deleteFiles(targets);
             }
-        }
 
+            @Override
+            protected void done() {
+                List<String> failures = new ArrayList<>();
+                ScreenshotFileRemover.Result result;
+                try {
+                    result = get();
+                } catch (Exception ex) {
+                    failures.add("削除に失敗しました: " + ex.getMessage());
+                    result = new ScreenshotFileRemover.Result(List.of(), List.of());
+                }
+                failures.addAll(result.failures());
+                removeRows(result.removed(), failures);
+                if (!failures.isEmpty()) {
+                    JOptionPane.showMessageDialog(DatabasePanel.this,
+                            "一部のファイルを削除できませんでした:\n" + String.join("\n", failures),
+                            "削除エラー", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    /** Drops the rows of screenshots whose files are gone, then refreshes the table and selection. */
+    private void removeRows(List<ScreenshotRecord> removed, List<String> failures) {
         if (database != null) {
+            for (ScreenshotRecord record : removed) {
+                try {
+                    database.delete(record.id());
+                } catch (SQLException ex) {
+                    failures.add(record.fileName() + ": " + ex.getMessage());
+                }
+            }
             try {
                 reload(database);
             } catch (SQLException ex) {
                 failures.add("一覧の再読み込みに失敗しました: " + ex.getMessage());
             }
         }
-
         if (selectionListener != null) {
             selectionListener.onSelectionChanged(getSelectedEntries());
-        }
-
-        if (!failures.isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                    "一部のファイルを削除できませんでした:\n" + String.join("\n", failures),
-                    "削除エラー", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -682,7 +693,15 @@ public class DatabasePanel extends JPanel {
                 } else {
                     return;
                 }
-                reload(database);
+                // Only this row changed: re-read it instead of reloading every row.
+                ScreenshotRecord updated = database.findById(record.id());
+                if (updated != null) {
+                    records.set(rowIndex, updated);
+                    fireTableRowsUpdated(rowIndex, rowIndex);
+                }
+                if (columnIndex == COL_SYMBOL) {
+                    updateSymbolFilterChoices();
+                }
                 if (notationChangeListener != null) {
                     notationChangeListener.onNotationChanged();
                 }

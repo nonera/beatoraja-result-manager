@@ -3,6 +3,7 @@ package com.beatoraja.screenshot.service.update;
 import com.beatoraja.screenshot.util.AppLogging;
 import com.beatoraja.screenshot.util.AppPaths;
 import com.beatoraja.screenshot.util.AppVersion;
+import com.beatoraja.screenshot.util.OsInfo;
 import com.beatoraja.screenshot.util.VersionComparator;
 
 import java.io.IOException;
@@ -14,8 +15,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 public class AppUpdateService {
 
@@ -45,7 +48,7 @@ public class AppUpdateService {
         if (!autoUpdateEnabled) {
             return false;
         }
-        if (!isWindows()) {
+        if (!OsInfo.isWindows()) {
             return false;
         }
         if ("dev".equalsIgnoreCase(AppVersion.get())) {
@@ -84,22 +87,28 @@ public class AppUpdateService {
             }
 
             Path workDir = Files.createTempDirectory("beatoraja-screenshot-manager-update-");
-            Path zipPath = workDir.resolve("release.zip");
-            Path extractDir = workDir.resolve("extracted");
+            try {
+                Path zipPath = workDir.resolve("release.zip");
+                Path extractDir = workDir.resolve("extracted");
 
-            listener.onStatus("v" + release.version() + " をダウンロードしています...");
-            downloadRelease(release.downloadUrl(), zipPath, listener);
+                listener.onStatus("v" + release.version() + " をダウンロードしています...");
+                downloadRelease(release.downloadUrl(), zipPath, listener);
 
-            listener.onStatus("更新ファイルを展開しています...");
-            Path sourceDir = ZipExtractUtils.extractRootDirectory(zipPath, extractDir);
-            Path sourceExecutable = sourceDir.resolve(EXECUTABLE_NAME);
-            if (!Files.isRegularFile(sourceExecutable)) {
-                throw new IOException("Downloaded release did not contain " + EXECUTABLE_NAME);
+                listener.onStatus("更新ファイルを展開しています...");
+                Path sourceDir = ZipExtractUtils.extractRootDirectory(zipPath, extractDir);
+                Path sourceExecutable = sourceDir.resolve(EXECUTABLE_NAME);
+                if (!Files.isRegularFile(sourceExecutable)) {
+                    throw new IOException("Downloaded release did not contain " + EXECUTABLE_NAME);
+                }
+
+                listener.onStatus("更新を適用しています...");
+                long parentPid = ProcessHandle.current().pid();
+                // From here the update script owns workDir and deletes it when it is done.
+                WindowsUpdateLauncher.launch(sourceDir, targetDir, executable, parentPid, workDir);
+            } catch (Exception e) {
+                deleteRecursively(workDir);
+                throw e;
             }
-
-            listener.onStatus("更新を適用しています...");
-            long parentPid = ProcessHandle.current().pid();
-            WindowsUpdateLauncher.launch(sourceDir, targetDir, executable, parentPid);
             LOG.info("Update launcher started. Current version " + currentVersion + " -> " + release.version());
             return UpdateOutcome.RESTARTING;
         } catch (Exception e) {
@@ -144,7 +153,18 @@ public class AppUpdateService {
         return Files.isRegularFile(candidate) ? candidate : null;
     }
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    /** Best-effort removal of a failed update's download folder. */
+    private static void deleteRecursively(Path dir) {
+        try (Stream<Path> paths = Files.walk(dir)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    LOG.log(Level.FINE, "Failed to delete " + path, e);
+                }
+            });
+        } catch (IOException e) {
+            LOG.log(Level.FINE, "Failed to clean up " + dir, e);
+        }
     }
 }

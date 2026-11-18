@@ -2,6 +2,7 @@ package com.beatoraja.screenshot.service;
 
 import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.parser.FilenameParser;
+import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.util.AppLogging;
 
 import java.io.IOException;
@@ -37,17 +38,18 @@ public class ScreenshotWatcher implements AutoCloseable {
     private Path watchedDirectory;
     private volatile boolean running;
 
-    public void start(Path directory, Listener listener) throws IOException {
+    /** Watches {@code directory} for new PNGs, parsing their names as {@code player} writes them. */
+    public void start(Path directory, PlayerKind player, Listener listener) throws IOException {
         stop();
         watchedDirectory = directory;
         watchService = FileSystems.getDefault().newWatchService();
         directory.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
         running = true;
 
-        executor.submit(() -> watchLoop(listener));
+        executor.submit(() -> watchLoop(player, listener));
     }
 
-    private void watchLoop(Listener listener) {
+    private void watchLoop(PlayerKind player, Listener listener) {
         while (running) {
             WatchKey key;
             try {
@@ -55,6 +57,8 @@ public class ScreenshotWatcher implements AutoCloseable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
+            } catch (java.nio.file.ClosedWatchServiceException e) {
+                return; // stop() closed the service
             }
 
             if (key == null) {
@@ -69,25 +73,41 @@ public class ScreenshotWatcher implements AutoCloseable {
                 if (!created.getFileName().toString().toLowerCase().endsWith(".png")) {
                     continue;
                 }
-                waitForFile(created);
-                listener.onScreenshotAdded(FilenameParser.parse(created));
+                if (!waitForFile(created)) {
+                    return;
+                }
+                try {
+                    listener.onScreenshotAdded(FilenameParser.parse(created, player));
+                } catch (RuntimeException e) {
+                    // One bad file or listener failure must not end the watch for later screenshots.
+                    LOG.log(Level.WARNING, "Failed to handle new screenshot " + created, e);
+                }
             }
             key.reset();
         }
     }
 
-    private void waitForFile(Path path) {
+    /**
+     * Waits up to 2 seconds for the player to finish writing {@code path}. A read failure (the
+     * file is still locked, say) only means "not ready yet". Returns false when interrupted.
+     */
+    private boolean waitForFile(Path path) {
         for (int i = 0; i < 20; i++) {
             try {
                 if (Files.exists(path) && Files.size(path) > 0) {
-                    return;
+                    return true;
                 }
+            } catch (IOException e) {
+                LOG.log(Level.FINE, "Screenshot not readable yet: " + path, e);
+            }
+            try {
                 Thread.sleep(100);
-            } catch (IOException | InterruptedException e) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                return false;
             }
         }
+        return true;
     }
 
     public void stop() {

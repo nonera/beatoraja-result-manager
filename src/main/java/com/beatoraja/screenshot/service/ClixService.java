@@ -22,6 +22,8 @@ public class ClixService {
 
     private static final Logger LOG = AppLogging.get(ClixService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** X's per-post image limit (raised from 4 to 20). */
+    public static final int MAX_IMAGES_PER_POST = 20;
 
     private final AppConfig config;
 
@@ -53,8 +55,8 @@ public class ClixService {
         if (imagePaths == null || imagePaths.isEmpty()) {
             return PostResult.failed("画像が選択されていません。");
         }
-        if (imagePaths.size() > 4) {
-            return PostResult.failed("Twitter は最大4枚まで投稿できます。");
+        if (imagePaths.size() > MAX_IMAGES_PER_POST) {
+            return PostResult.failed("Twitter は最大" + MAX_IMAGES_PER_POST + "枚まで投稿できます。");
         }
         return new TwitterBrowserPostService().post(text, imagePaths);
     }

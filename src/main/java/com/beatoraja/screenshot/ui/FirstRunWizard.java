@@ -1,7 +1,7 @@
 package com.beatoraja.screenshot.ui;
 
 import com.beatoraja.screenshot.config.AppConfig;
-import com.beatoraja.screenshot.player.BmzPaths;
+import com.beatoraja.screenshot.player.PlayerSetup;
 import com.beatoraja.screenshot.player.PlayerKind;
 import com.beatoraja.screenshot.service.ClixService;
 import com.beatoraja.screenshot.service.twitter.TwitterAuthService;
@@ -18,6 +18,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -141,18 +142,18 @@ public class FirstRunWizard extends JPanel {
             return;
         }
 
-        File screenshotDir = new File(beatorajaDir, "screenshot");
-        if (PlayerKind.detect(beatorajaDir.toPath()) == PlayerKind.BMZ) {
-            try {
-                BmzPaths bmzPaths = BmzPaths.resolve(beatorajaDir.toPath(), "");
-                beatorajaDir = bmzPaths.dataDirectory().toFile();
-                screenshotDir = bmzPaths.screenshotDirectory().toFile();
-            } catch (java.io.IOException e) {
-                JOptionPane.showMessageDialog(this, "BMZ Player の config.toml を読み込めません: " + e.getMessage(),
-                        "エラー", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
+        // Seeds the player choice, which can be switched later in the settings.
+        PlayerSetup setup;
+        try {
+            setup = PlayerSetup.fromFolder(beatorajaDir.toPath());
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "BMZ Player の config.toml を読み込めません: " + e.getMessage(),
+                    "エラー", JOptionPane.ERROR_MESSAGE);
+            return;
         }
+        PlayerKind playerKind = setup.kind();
+        beatorajaDir = setup.playerDirectory().toFile();
+        File screenshotDir = setup.screenshotDirectory().toFile();
         if (!screenshotDir.isDirectory()) {
             int answer = JOptionPane.showConfirmDialog(
                     this,
@@ -167,6 +168,7 @@ public class FirstRunWizard extends JPanel {
         }
 
         config.setScreenshotDirectory(screenshotDir.getAbsolutePath());
+        config.setPlayerKind(playerKind);
         config.setBeatorajaDirectory(beatorajaDir.getAbsolutePath());
 
         List<AppConfig.DiscordWebhookEntry> webhooks = new ArrayList<>();

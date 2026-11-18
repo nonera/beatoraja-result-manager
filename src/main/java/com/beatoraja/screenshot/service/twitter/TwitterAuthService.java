@@ -31,44 +31,32 @@ public class TwitterAuthService {
     }
 
     public ClixService.AuthResult loginInteractive(LoginProgressListener listener) {
+        if (listener == null) {
+            // The user has to log in in the browser and confirm here; without a UI there is no point starting it.
+            return ClixService.AuthResult.failed("ログイン UI が利用できません");
+        }
         try {
-            if (listener != null) {
-                listener.onStatus("Chrome / Edge を起動しています...");
-            }
+            listener.onStatus("Chrome / Edge を起動しています...");
             chromeLoginService.openLoginBrowser();
 
-            if (listener != null) {
-                listener.onBrowserOpened();
-                listener.onStatus("表示されたブラウザで X にログインし、「ログイン完了」を押してください");
-                if (!listener.awaitLoginComplete()) {
-                    throw new IOException("ログインをキャンセルしました");
-                }
-            } else {
-                throw new IOException("ログイン UI が利用できません");
+            listener.onBrowserOpened();
+            listener.onStatus("表示されたブラウザで X にログインし、「ログイン完了」を押してください");
+            if (!listener.awaitLoginComplete()) {
+                throw new IOException("ログインをキャンセルしました");
             }
 
-            if (listener != null) {
-                listener.onStatus("開いた Chrome / Edge を閉じてください...");
-            }
-            chromeLoginService.waitForLoginBrowserClosed(() ->
-                    listener != null && listener.isCancelled());
+            listener.onStatus("開いた Chrome / Edge を閉じてください...");
+            chromeLoginService.waitForLoginBrowserClosed(listener::isCancelled);
 
-            if (listener != null) {
-                listener.onStatus("Cookie を取得しています...");
-            }
-            TwitterCookies cookies = chromeLoginService.extractCookiesFromProfile(() ->
-                    listener != null && listener.isCancelled());
+            listener.onStatus("Cookie を取得しています...");
+            TwitterCookies cookies = chromeLoginService.extractCookiesFromProfile(listener::isCancelled);
 
             saveCookies(cookies);
-            if (listener != null) {
-                listener.onStatus("認証を確認しています...");
-            }
+            listener.onStatus("認証を確認しています...");
 
             ClixService.AuthResult result = new ClixService(config).checkAuth();
             if (result.success()) {
-                if (listener != null) {
-                    listener.onStatus("ログイン完了");
-                }
+                listener.onStatus("ログイン完了");
                 return result;
             }
             clearStoredSession();
@@ -84,28 +72,16 @@ public class TwitterAuthService {
         }
     }
 
-    public ClixService.AuthResult ensureAuthenticated(LoginProgressListener listener) {
-        if (hasStoredSession()) {
-            ClixService.AuthResult verified = verifyStoredSession();
-            if (verified.success()) {
-                return verified;
-            }
-            if (listener != null) {
-                listener.onStatus("保存済みセッションを更新しています...");
-            }
-            if (refreshSilently()) {
-                verified = verifyStoredSession();
-                if (verified.success()) {
-                    return verified;
-                }
-            }
+    /**
+     * Checks the stored session; if that fails, re-reads the cookies from the browser profile
+     * without showing anything and checks again.
+     */
+    public ClixService.AuthResult verifyOrRefresh() {
+        ClixService.AuthResult result = verifyStoredSession();
+        if (!result.success() && refreshSilently()) {
+            result = verifyStoredSession();
         }
-
-        if (listener == null) {
-            return ClixService.AuthResult.failed(
-                    "Twitter にログインしてください。設定画面から「Twitter にログイン」を実行してください。");
-        }
-        return loginInteractive(listener);
+        return result;
     }
 
     public boolean refreshSilently() {

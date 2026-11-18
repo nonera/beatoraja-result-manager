@@ -5,6 +5,8 @@ import com.beatoraja.screenshot.model.ScreenshotEntry;
 import com.beatoraja.screenshot.player.PlayScore;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,21 +29,21 @@ class TweetTextGeneratorTest {
 
     @Test
     void generateWithoutLimitKeepsFullTitle() {
-        String text = TweetTextGenerator.generate(entry("Short Title"), "");
+        String text = TweetTextGenerator.generate(entry("Short Title"), "", null, PostTextFormat.defaults());
         assertTrue(text.contains("Short Title"));
     }
 
     @Test
     void generateWithTitleLimitTruncatesLongTitle() {
         String longTitle = "あ".repeat(50);
-        String text = TweetTextGenerator.generate(entry(longTitle), "", 20);
+        String text = TweetTextGenerator.generate(entry(longTitle), "", null, PostTextFormat.defaults(), 20, Map.of());
         assertTrue(text.contains("…"));
         assertFalse(text.contains(longTitle));
     }
 
     @Test
     void generateWithTitleLimitLeavesShortTitleUntouched() {
-        String text = TweetTextGenerator.generate(entry("短いタイトル"), "", 40);
+        String text = TweetTextGenerator.generate(entry("短いタイトル"), "", null, PostTextFormat.defaults(), 40, Map.of());
         assertTrue(text.contains("短いタイトル"));
         assertFalse(text.contains("…"));
     }
@@ -49,9 +51,9 @@ class TweetTextGeneratorTest {
     @Test
     void truncatedTitleFitsWithinBudget() {
         String longTitle = "漢".repeat(50);
-        String text = TweetTextGenerator.generate(titleOnlyEntry(longTitle), "", 20);
+        String text = TweetTextGenerator.generate(titleOnlyEntry(longTitle), "", null, PostTextFormat.defaults(), 20, Map.of());
         assertTrue(TweetTextLimits.weightedLength(text) <= 20);
-        assertEquals(text, TweetTextGenerator.generate(titleOnlyEntry(longTitle), "", 20));
+        assertEquals(text, TweetTextGenerator.generate(titleOnlyEntry(longTitle), "", null, PostTextFormat.defaults(), 20, Map.of()));
     }
 
     /** 1500 notes, EX 2620 (87.33%, AA, AAA-47), BP 45. */
@@ -70,7 +72,7 @@ class TweetTextGeneratorTest {
     void defaultFormatMatchesOriginalLayout() {
         assertEquals("★12 Song FULL COMBO CLEAR AAA",
                 TweetTextGenerator.generate(entry("Song"), "★12", SCORE_FOR_AAA, PostTextFormat.defaults()));
-        assertEquals("★12 Song FULL COMBO CLEAR AAA", TweetTextGenerator.generate(entry("Song"), "★12"));
+        assertEquals("★12 Song FULL COMBO CLEAR AAA", TweetTextGenerator.generate(entry("Song"), "★12", null, PostTextFormat.defaults()));
     }
 
     @Test
@@ -117,7 +119,7 @@ class TweetTextGeneratorTest {
     @Test
     void titleTruncationWorksWithCustomFormat() {
         String longTitle = "あ".repeat(50);
-        String text = TweetTextGenerator.generate(entry(longTitle), "", SCORE, allEnabled(), 20);
+        String text = TweetTextGenerator.generate(entry(longTitle), "", SCORE, allEnabled(), 20, Map.of());
         assertTrue(text.contains("…"));
         assertTrue(text.endsWith("BP45 87.33% EX2620 AAA-47"));
     }

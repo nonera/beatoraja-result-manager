@@ -16,12 +16,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ChromiumDevToolsClient implements AutoCloseable {
+public class ChromiumDevToolsClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final List<String> COOKIE_URLS = List.of("https://x.com", "https://twitter.com");
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(8);
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration PAGE_LOAD_TIMEOUT = Duration.ofSeconds(10);
+    private static final long PAGE_LOAD_POLL_MILLIS = 250;
+    /** Shared by the readiness probes, which run every 150 ms while a browser starts. */
+    private static final HttpClient PROBE_CLIENT = HttpClient.newHttpClient();
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final int debugPort;
@@ -60,13 +64,12 @@ public class ChromiumDevToolsClient implements AutoCloseable {
 
     private static boolean isDebugPortReady(int port) {
         try {
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:" + port + "/json/version"))
                     .timeout(Duration.ofSeconds(3))
                     .GET()
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = PROBE_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             return response.statusCode() < 400 && response.body().contains("webSocketDebuggerUrl");
         } catch (Exception e) {
             return false;
@@ -78,9 +81,26 @@ public class ChromiumDevToolsClient implements AutoCloseable {
         try (ChromiumCdpSession session = ChromiumCdpSession.connect(httpClient, webSocketUrl, HTTP_TIMEOUT)) {
             session.send("Network.enable", Map.of(), COMMAND_TIMEOUT);
             session.send("Page.navigate", Map.of("url", "https://x.com/home"), COMMAND_TIMEOUT);
-            Thread.sleep(2500);
+            waitForPageLoad(session);
             JsonNode result = session.send("Network.getCookies", Map.of("urls", COOKIE_URLS), COMMAND_TIMEOUT);
             return parseCookies(result);
+        }
+    }
+
+    /**
+     * Waits until the page reports it has finished loading (so cookies x.com refreshes on load
+     * are in place), up to {@link #PAGE_LOAD_TIMEOUT}. Not finishing in time is not an error:
+     * the cookies are read anyway and the caller retries if they are incomplete.
+     */
+    private static void waitForPageLoad(ChromiumCdpSession session) throws Exception {
+        long deadline = System.currentTimeMillis() + PAGE_LOAD_TIMEOUT.toMillis();
+        while (System.currentTimeMillis() < deadline) {
+            JsonNode state = session.send("Runtime.evaluate",
+                    Map.of("expression", "document.readyState", "returnByValue", true), COMMAND_TIMEOUT);
+            if ("complete".equals(state.path("result").path("value").asText())) {
+                return;
+            }
+            Thread.sleep(PAGE_LOAD_POLL_MILLIS);
         }
     }
 
@@ -154,9 +174,5 @@ public class ChromiumDevToolsClient implements AutoCloseable {
             throw new IOException("CDP WebSocket URL を取得できませんでした");
         }
         return webSocketUrl;
-    }
-
-    @Override
-    public void close() {
     }
 }

@@ -73,11 +73,7 @@ public final class AppLogging {
     }
 
     static Path resolveLogDir() {
-        String appData = System.getenv("APPDATA");
-        if (appData != null && !appData.isBlank()) {
-            return Path.of(appData, "beatoraja-screenshot-manager", "logs");
-        }
-        return Path.of(System.getProperty("user.home"), ".beatoraja-screenshot-manager", "logs");
+        return AppDataLocation.resolve().resolve("logs");
     }
 
     public static String sanitize(String message) {

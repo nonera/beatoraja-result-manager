@@ -11,3 +11,4 @@ tools/clix.exe
 tools/clix/
 tools/twitter.exe
 *.log
+__pycache__/
