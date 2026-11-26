@@ -22,7 +22,9 @@ public final class FilenameParser {
      * BMZ Player (v0.5.2+, {@code crates/bmz-player/src/app/screenshot.rs}):
      * {@code <yyyyMMdd_HHmmss_SSS>_<body>.png}, where body is {@code Music_Select[_<folder>]},
      * {@code Decide_<title>[_<subtitle>]}, {@code Play_<title>[_<subtitle>]} or, on the result
-     * screen, {@code <title>[_<subtitle>]_<clear label>[_<n>]}.
+     * screen, {@code <title>[_<subtitle>]_<clear label>[_<n>]}. From v0.5.3 the title of a chart
+     * in a difficulty table is preceded by its table label ({@code ★12_<title>}); that label is
+     * kept in the title here and split off by ChartResolverService, which knows the tables.
      */
     private static final Pattern BMZ_FILE_PATTERN =
             Pattern.compile("^(\\d{8}_\\d{6})_(\\d{3})_(.+)\\.png$", Pattern.CASE_INSENSITIVE);

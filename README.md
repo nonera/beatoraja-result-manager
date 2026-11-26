@@ -148,6 +148,7 @@ beatoraja の `table/` 配下にある `.bmt` を読み込み、曲名から所�
 
 - スクショ: リザルト画面で **F12**。`config.toml` の `[screenshot] dir`（既定 `<data>/screenshots/`）に保存されます
 - BMZ Player **v0.5.2 以降**が必要です。ファイル名 `<年月日_時分秒_ミリ秒>_<曲名>[_<サブタイトル>]_<ランプ>.png`（例: `20261105_203045_123_Song_[ANOTHER]_Hard.png`。選曲・決定・プレイ画面は `Music_Select` / `Decide_` / `Play_` 付き）から画面種別とランプを読み取ります。v0.5.1 以前の `bmz-screenshot-<UNIX ミリ秒>.png` には対応していません
+- v0.5.3 以降は難易度表の曲だと曲名の前に表記が付きます（例: `20261121_203045_123_★12_Song_[ANOTHER]_Hard.png`）。読み込んだ難易度表のレベル名と一致する場合は曲名から外し、難易度表記として使います
 - ファイル名だけでは譜面を特定できないため、撮影時刻の直前 10 分以内に終了したプレイを `profiles/<ID>/score.db` の `score_history` から探し、ファイル名のランプと一致すれば曲名・ランプ・ランク・判定数を補完します
 - 曲情報は `library.db` の `charts`、難易度表は `library.db` の `difficulty_tables` / `difficulty_table_entries` から読み込みます
 - プレイヤー名欄にはプロファイル ID を指定（空欄なら `config.toml` の `active_profile`）

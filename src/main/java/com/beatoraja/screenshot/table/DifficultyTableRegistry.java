@@ -20,6 +20,8 @@ public class DifficultyTableRegistry {
     /** Folder-name prefix from each table's .bmt {@code tag} field (e.g. "14key闇★"). */
     private final Map<String, String> tablePrefixByKey = new LinkedHashMap<>();
     private final Map<String, Map<String, Set<String>>> notationsByTagAndSymbol = new LinkedHashMap<>();
+    /** Every loaded table's level-folder names (e.g. "★12", "sl5"). */
+    private final Set<String> folderNames = new LinkedHashSet<>();
     private final Map<String, Set<TableMatch>> matchesByTitle = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesBySha256 = new LinkedHashMap<>();
     private final Map<String, Set<TableMatch>> matchesByMd5 = new LinkedHashMap<>();
@@ -127,6 +129,7 @@ public class DifficultyTableRegistry {
             if (notation.isBlank()) {
                 continue;
             }
+            folderNames.add(folder.name);
 
             String folderTag = !tableKey.isBlank() ? tableKey : parsed.symbol();
             if (!parsed.symbol().isBlank()) {
@@ -306,6 +309,11 @@ public class DifficultyTableRegistry {
         return TableLevelParser.parse(notation, knownTags);
     }
 
+    /** Whether {@code name} is exactly the name of a level folder in a loaded table (e.g. "★12"). */
+    public boolean isKnownFolderName(String name) {
+        return name != null && folderNames.contains(name);
+    }
+
     public List<String> getKnownTags() {
         return List.copyOf(knownTags);
     }
@@ -378,6 +386,7 @@ public class DifficultyTableRegistry {
         tagNames.clear();
         tablePrefixByKey.clear();
         notationsByTagAndSymbol.clear();
+        folderNames.clear();
         failedTableFiles = List.of();
         loadedFileCount = 0;
         matchesByTitle.clear();
