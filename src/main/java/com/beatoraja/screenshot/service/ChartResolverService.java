@@ -159,11 +159,44 @@ public class ChartResolverService implements AutoCloseable {
     }
 
     public EnrichedScreenshot enrich(ScreenshotEntry entry) {
-        ResolvedChart resolved = resolveFromPlayerData(entry);
+        ScreenshotEntry named = withBmzTableLabel(entry);
+        ResolvedChart resolved = resolveFromPlayerData(named);
         if (resolved != null) {
-            return buildEnriched(withPlayResult(entry, resolved), resolved);
+            return buildEnriched(withPlayResult(named, resolved), resolved);
         }
-        return enrichFromFilename(entry);
+        return enrichFromFilename(named);
+    }
+
+    /**
+     * BMZ Player v0.5.3+ puts the chart's difficulty-table label before the title
+     * ({@code ★12_Song_[ANOTHER]}). The file name parser cannot tell that label from a title that
+     * itself holds an underscore, so it is split off here, and only when it names a level folder
+     * of a loaded table; it then serves as the table folder, as beatoraja's folder name does.
+     */
+    private ScreenshotEntry withBmzTableLabel(ScreenshotEntry entry) {
+        if (playerKind != PlayerKind.BMZ || !entry.getRawTableFolder().isBlank()) {
+            return entry;
+        }
+        String title = entry.getTitle();
+        int separator = title.indexOf('_');
+        if (separator <= 0 || separator == title.length() - 1) {
+            return entry;
+        }
+        String label = title.substring(0, separator);
+        if (!registry.isKnownFolderName(label)) {
+            return entry;
+        }
+        return new ScreenshotEntry(
+                entry.getFilePath(),
+                entry.getFileName(),
+                entry.getCapturedAt(),
+                entry.getStateLabel(),
+                title.substring(separator + 1),
+                label,
+                entry.getLevel(),
+                entry.getClearType(),
+                entry.getRank()
+        );
     }
 
     private ResolvedChart resolveFromPlayerData(ScreenshotEntry entry) {
@@ -257,7 +290,8 @@ public class ChartResolverService implements AutoCloseable {
     }
 
     /**
-     * BMZ Player screenshot names carry only a sanitized title and the lamp, so once the play is
+     * BMZ Player screenshot names carry only a sanitized title, the lamp and (v0.5.3+) the
+     * table label, so once the play is
      * found its song, lamp and rank stand in for what beatoraja would have written into the file
      * name. beatoraja entries are returned unchanged.
      */
